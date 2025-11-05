@@ -1,7 +1,7 @@
 ﻿Build-Module -ModuleName 'PSMaintenance' {
     # Usual defaults as per standard module
     $Manifest = [ordered] @{
-        ModuleVersion        = '0.1.0'
+        ModuleVersion        = '0.X.0'
         CompatiblePSEditions = @('Desktop', 'Core')
         GUID                 = 'da587bcf-c954-402b-91d2-04ebd2bc2ea5'
         Author               = 'Przemyslaw Klys'
