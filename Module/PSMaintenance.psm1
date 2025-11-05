@@ -9,7 +9,7 @@ $AssemblyFolders = Get-ChildItem -Path $PSScriptRoot\bin\Debug\net472 -File -Err
 
 # to speed up development adding direct path to binaries, instead of the the Lib folder
 $Development = $true
-$DevelopmentPath = "$PSScriptRoot\..\Sources\PSMaintenance\bin\Debug"
+$DevelopmentPath = "$PSScriptRoot\..\PSMaintenance\bin\Debug"
 $DevelopmentFolderCore = "net8.0"
 $DevelopmentFolderDefault = "net472"
 $BinaryModules = @(

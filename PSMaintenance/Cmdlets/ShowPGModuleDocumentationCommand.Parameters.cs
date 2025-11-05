@@ -86,7 +86,7 @@ public sealed partial class ShowModuleDocumentationCommand
     [ValidateSet("MamlDefault","ProseFirst","AllAsCode")]
     public string ExamplesLayout { get; set; } = "ProseFirst";
 
-    // Remote repository support (enable with -Online). Legacy switches removed; scripts using them will be mapped internally if needed.
+    // Remote repository support (enable with -Online).
     /// <summary>
     /// Branch name to use when fetching remote docs. If omitted, the provider default branch is used.
     /// </summary>

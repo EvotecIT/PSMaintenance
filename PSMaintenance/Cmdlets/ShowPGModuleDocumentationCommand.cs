@@ -10,34 +10,22 @@ namespace PSMaintenance;
 /// <para type="synopsis">Displays module documentation (README, CHANGELOG, LICENSE, Intro/Upgrade) in the console.</para>
 /// <para type="description">Resolves documentation files from an installed module (root or Internals folder) and renders them with Spectre.Console. When local files are absent or when requested, it can fetch files directly from the module's repository specified by <c>PrivateData.PSData.ProjectUri</c> (GitHub or Azure DevOps), optionally using a Personal Access Token.</para>
 /// <example>
-///   <code>Show-ModuleDocumentation -Name EFAdminManager -Readme -Changelog</code>
+///   <code>Show-ModuleDocumentation -Name EFAdminManager</code>
 /// </example>
 /// <example>
-/// <example>
-///   <code>Show-ModuleDocumentation -Name EFAdminManager -Readme -Changelog -PreferInternals</code>
-/// </example>
-///   <code>Show-ModuleDocumentation -Name EFAdminManager -PreferRepository -RepositoryPaths 'docs' -RepositoryBranch 'main'</code>
+///   <code>Show-ModuleDocumentation -Name EFAdminManager -Online</code>
 /// </example>
 /// <example>
-///   <code>Show-ModuleDocumentation -Name EFAdminManager -PreferRepository -RepositoryToken 'ghp_xxx'</code>
+///   <code>Show-ModuleDocumentation -Name EFAdminManager -Online -Mode PreferRemote -RepositoryPaths 'Docs/en-US'</code>
 /// </example>
 /// <example>
-///   <code>Show-ModuleDocumentation -Name EFAdminManager -PreferRepository -RepositoryPaths 'Docs/en-US' -RepositoryBranch 'main'</code>
-/// <example>
-///   <code>Show-ModuleDocumentation -Module (Get-Module -ListAvailable EFAdminManager) -All</code>
-/// </example>
-/// <example>
-///   <code>Show-ModuleDocumentation -ModuleBase 'C:\\Program Files\\WindowsPowerShell\\Modules\\EFAdminManager\\3.0.0' -Readme</code>
-/// </example>
-/// <example>
-///   <code>Show-ModuleDocumentation -Name EFAdminManager -ExamplesMode Raw</code>
+///   <code>Show-ModuleDocumentation -ModuleBase 'C:\\Program Files\\WindowsPowerShell\\Modules\\EFAdminManager\\3.0.0'</code>
 /// </example>
 /// <example>
 ///   <code>Show-ModuleDocumentation -Name EFAdminManager -ExamplesLayout ProseFirst</code>
 /// </example>
-/// </example>
 /// <example>
-///   <code>Set-ModuleDocumentation -FromEnvironment; Show-ModuleDocumentation -Name EFAdminManager -PreferRepository</code>
+///   <code>Set-ModuleDocumentation -FromEnvironment; Show-ModuleDocumentation -Name EFAdminManager -Online</code>
 /// </example>
 /// </summary>
 [Cmdlet(VerbsCommon.Show, "ModuleDocumentation", DefaultParameterSetName = "ByName")]
@@ -75,6 +63,7 @@ public sealed partial class ShowModuleDocumentationCommand : PSCmdlet
         string? titleName = null;
         string? titleVersion = null;
         PSObject? delivery = null;
+        PSObject? repository = null;
         string? projectUri = null;
 
         string? manifestPathUsed = null;
@@ -102,7 +91,7 @@ public sealed partial class ShowModuleDocumentationCommand : PSCmdlet
                 {
                     titleName = (pso.Properties["Name"]?.Value ?? pso.Properties["ModuleName"]?.Value)?.ToString();
                     titleVersion = pso.Properties["Version"]?.Value?.ToString();
-                    delivery = this.InvokeCommand.NewScriptBlock("(Test-ModuleManifest -Path $args[0]).PrivateData.PSData.PSPublishModuleDelivery").Invoke(manifestPathUsed).FirstOrDefault() as PSObject;
+                    delivery = this.InvokeCommand.NewScriptBlock("(Test-ModuleManifest -Path $args[0]).PrivateData.PSData.Delivery").Invoke(manifestPathUsed).FirstOrDefault() as PSObject;
                     projectUri = this.InvokeCommand.NewScriptBlock("(Test-ModuleManifest -Path $args[0]).PrivateData.PSData.ProjectUri").Invoke(manifestCandidates[0]).FirstOrDefault()?.ToString();
                     var internalsRel = delivery?.Properties["InternalsPath"]?.Value as string ?? "Internals";
                     var cand = Path.Combine(rootBase, internalsRel);
@@ -146,7 +135,8 @@ public sealed partial class ShowModuleDocumentationCommand : PSCmdlet
             if (!string.IsNullOrEmpty(manifestPath))
             {
                 manifestPathUsed = manifestPath;
-                delivery = this.InvokeCommand.NewScriptBlock("(Test-ModuleManifest -Path $args[0]).PrivateData.PSData.PSPublishModuleDelivery").Invoke(manifestPathUsed).FirstOrDefault() as PSObject;
+                delivery = this.InvokeCommand.NewScriptBlock("(Test-ModuleManifest -Path $args[0]).PrivateData.PSData.Delivery").Invoke(manifestPathUsed).FirstOrDefault() as PSObject;
+                repository = this.InvokeCommand.NewScriptBlock("(Test-ModuleManifest -Path $args[0]).PrivateData.PSData.Repository").Invoke(manifestPathUsed).FirstOrDefault() as PSObject;
                 projectUri = this.InvokeCommand.NewScriptBlock("(Test-ModuleManifest -Path $args[0]).PrivateData.PSData.ProjectUri").Invoke(manifestPathUsed).FirstOrDefault()?.ToString();
                 var internalsRel = delivery?.Properties["InternalsPath"]?.Value as string ?? "Internals";
                 var cand = Path.Combine(rootBase, internalsRel);
@@ -159,41 +149,41 @@ public sealed partial class ShowModuleDocumentationCommand : PSCmdlet
             }
         }
 
-        // Pull repository hints from delivery metadata when parameters are not specified
+        // Pull repository hints from manifest PSData.Repository when parameters are not specified
         string? branchToUse = RepositoryBranch;
         string[]? pathsToUse = RepositoryPaths;
         try
         {
-            if (string.IsNullOrWhiteSpace(branchToUse) && delivery != null)
+            if (string.IsNullOrWhiteSpace(branchToUse) && repository != null)
             {
                 string? b = null;
-                try { b = delivery.Properties["RepositoryBranch"]?.Value?.ToString(); } catch { }
+                try { b = repository.Properties["Branch"]?.Value?.ToString(); } catch { }
                 if (string.IsNullOrWhiteSpace(b))
                 {
                     // Case-insensitive fallback
-                    var prop = delivery.Properties.FirstOrDefault(pp => string.Equals(pp.Name, "RepositoryBranch", StringComparison.OrdinalIgnoreCase));
+                    var prop = repository.Properties.FirstOrDefault(pp => string.Equals(pp.Name, "Branch", StringComparison.OrdinalIgnoreCase));
                     b = prop?.Value?.ToString();
                 }
                 if (string.IsNullOrWhiteSpace(b) && !string.IsNullOrEmpty(manifestPathUsed))
                 {
                     // Hashtable-safe manifest fallback
-                    var sbGet = this.InvokeCommand.NewScriptBlock("$d = (Test-ModuleManifest -Path $args[0]).PrivateData.PSData.PSPublishModuleDelivery; if ($d -is [hashtable]) { $d['RepositoryBranch'] } else { $d.RepositoryBranch }");
+                    var sbGet = this.InvokeCommand.NewScriptBlock("$r = (Test-ModuleManifest -Path $args[0]).PrivateData.PSData.Repository; if ($r -is [hashtable]) { $r['Branch'] } else { $r.Branch }");
                     b = sbGet.Invoke(manifestPathUsed).FirstOrDefault()?.ToString();
                 }
                 if (!string.IsNullOrWhiteSpace(b)) branchToUse = b;
             }
-            if ((pathsToUse == null || pathsToUse.Length == 0) && delivery != null)
+            if ((pathsToUse == null || pathsToUse.Length == 0) && repository != null)
             {
                 System.Collections.IEnumerable? arr = null;
-                try { arr = delivery.Properties["RepositoryPaths"]?.Value as System.Collections.IEnumerable; } catch { }
+                try { arr = repository.Properties["Paths"]?.Value as System.Collections.IEnumerable; } catch { }
                 if (arr == null)
                 {
-                    var prop = delivery.Properties.FirstOrDefault(pp => string.Equals(pp.Name, "RepositoryPaths", StringComparison.OrdinalIgnoreCase));
+                    var prop = repository.Properties.FirstOrDefault(pp => string.Equals(pp.Name, "Paths", StringComparison.OrdinalIgnoreCase));
                     arr = prop?.Value as System.Collections.IEnumerable;
                 }
                 if (arr == null && !string.IsNullOrEmpty(manifestPathUsed))
                 {
-                    var sbGet = this.InvokeCommand.NewScriptBlock("$d = (Test-ModuleManifest -Path $args[0]).PrivateData.PSData.PSPublishModuleDelivery; if ($d -is [hashtable]) { $d['RepositoryPaths'] } else { $d.RepositoryPaths }");
+                    var sbGet = this.InvokeCommand.NewScriptBlock("$r = (Test-ModuleManifest -Path $args[0]).PrivateData.PSData.Repository; if ($r -is [hashtable]) { $r['Paths'] } else { $r.Paths }");
                     var res = sbGet.Invoke(manifestPathUsed).FirstOrDefault();
                     arr = res as System.Collections.IEnumerable;
                 }

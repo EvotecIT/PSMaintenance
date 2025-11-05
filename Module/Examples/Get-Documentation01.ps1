@@ -7,7 +7,7 @@ Get-ModuleDocumentation -Name 'PSPublishModule'
 Get-ModuleDocumentation -Name 'PSPublishModule' -Type All
 
 # HTML export with grouped tabs (Scripts/Docs when present) - default opens browser
-Show-ModuleDocumentation -Name 'PSPublishModule' -Type All
+Show-ModuleDocumentation -Name 'PSPublishModule'
 
 # Save to a chosen path without opening
-Show-ModuleDocumentation -Name 'PSPublishModule' -Type All -Path (Join-Path $env:TEMP 'PSPublishModule-Docs.html') -DoNotShow
+Show-ModuleDocumentation -Name 'PSPublishModule' -OutputPath (Join-Path $env:TEMP 'PSPublishModule-Docs.html') -DoNotShow

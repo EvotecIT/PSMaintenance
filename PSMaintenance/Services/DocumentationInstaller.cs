@@ -49,7 +49,7 @@ internal sealed class DocumentationInstaller
         {
             try
             {
-                var del = _cmdlet.InvokeCommand.NewScriptBlock("(Test-ModuleManifest -Path $args[0]).PrivateData.PSData.PSPublishModuleDelivery").Invoke(manifestPath).FirstOrDefault() as PSObject;
+                var del = _cmdlet.InvokeCommand.NewScriptBlock("(Test-ModuleManifest -Path $args[0]).PrivateData.PSData.Delivery").Invoke(manifestPath).FirstOrDefault() as PSObject;
                 var internalsRel = del?.Properties["InternalsPath"]?.Value as string ?? "Internals";
                 var cand = Path.Combine(root, internalsRel);
                 if (Directory.Exists(cand)) internals = cand;

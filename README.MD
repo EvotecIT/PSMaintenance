@@ -16,14 +16,17 @@ Install-Module PSMaintenance -Scope CurrentUser
 ## Quick start
 
 ```powershell
-# View local docs
-Show-ModuleDocumentation -Name 'EFAdminManager' -Readme -Changelog
+# View docs (local only)
+Show-ModuleDocumentation -Name 'EFAdminManager'
 
-# Prefer docs from repository when available
-Show-ModuleDocumentation -Name 'EFAdminManager' -PreferRepository
+# Include repository docs and standard tabs (README/CHANGELOG/LICENSE)
+Show-ModuleDocumentation -Name 'EFAdminManager' -Online
 
 # Copy bundled docs (Internals + README/CHANGELOG/LICENSE) to a folder
 Install-ModuleDocumentation -Name 'EFAdminManager' -Path 'C:\Docs' -Layout ModuleAndVersion
+
+# Copy only scripts (no versioned folder), and unblock on Windows
+Install-ModuleScript -Name 'EFAdminManager' -Path 'C:\Tools' -Unblock -Verbose
 ```
 
 ## Configure repository access (private repos)
@@ -43,29 +46,53 @@ PSMaintenance can fetch documentation directly from your repository defined in t
 
 You can also pass a token per-call: `-RepositoryToken '...'`. Stored tokens are used when env vars and explicit tokens are not provided.
 
-## Tell PSMaintenance where your Docs live in the repo
-
-In the module’s build script (PSPublishModule DSL):
+Examples:
 
 ```powershell
-New-ConfigurationDelivery -Enable -RepositoryPaths 'docs' -RepositoryBranch main   # GitHub
-# or
-New-ConfigurationDelivery -Enable -RepositoryPaths 'Docs/en-US' -RepositoryBranch main  # Azure DevOps
+# Store tokens explicitly
+Set-ModuleDocumentation -GitHubToken 'ghp_xxx'
+Set-ModuleDocumentation -AzureDevOpsPat 'azdopat_xxx'
+
+# Read from environment variables
+$env:PG_GITHUB_TOKEN='ghp_xxx'; $env:PG_AZDO_PAT='azdopat_xxx'
+Set-ModuleDocumentation -FromEnvironment
+
+# Remove stored tokens
+Set-ModuleDocumentation -Clear
 ```
+
+## Tell PSMaintenance where your Docs live in the repo
+
+Add runtime hints in your module manifest (.psd1):
+
+```powershell
+PrivateData = @{
+  PSData = @{
+    ProjectUri = 'https://dev.azure.com/Org/Project/_git/Repo'  # or GitHub URL
+    Delivery   = @{ InternalsPath = 'Internals'; DocsPaths = @('Internals\Docs','Docs') }
+    Repository = @{ Branch = 'main'; Paths = @('Docs','README.md','CHANGELOG.md') }
+  }
+}
+```
+
+
 
 Then:
 
 ```powershell
-Show-ModuleDocumentation -Name 'EFAdminManager' -PreferRepository
-Show-ModuleDocumentation -Name 'EFAdminManager' -PreferRepository -RepositoryPaths 'Docs/en-US'
+Show-ModuleDocumentation -Name 'EFAdminManager' -Online
+Show-ModuleDocumentation -Name 'EFAdminManager' -Online -Mode All
+Show-ModuleDocumentation -Name 'EFAdminManager' -Online -Mode PreferRemote -RepositoryPaths 'Docs/en-US'
 ```
 
 ## Commands
 
 - `Show-ModuleDocumentation` [Alias: `Show-Documentation`]
-  - Displays README, CHANGELOG, LICENSE, Intro/Upgrade, Docs; local or repository.
+  - Displays README, CHANGELOG, LICENSE, Intro/Upgrade, Docs; local or `-Online` from repository.
 - `Install-ModuleDocumentation` [Alias: `Install-Documentation`]
   - Copies Internals and selected root docs to a destination path.
+- `Install-ModuleScript` [Alias: `Install-ModuleScripts`, `Install-Scripts`]
+  - Copies only `.ps1` from `Internals\Scripts` to a target folder. Supports `-Include`, `-Exclude`, `-OnExists`, and `-Unblock`.
 - `Set-ModuleDocumentation` [Alias: `Set-Documentation`]
   - Stores or clears tokens used to access private GitHub/Azure DevOps repos.
 

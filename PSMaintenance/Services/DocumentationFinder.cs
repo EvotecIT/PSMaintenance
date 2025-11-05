@@ -28,20 +28,20 @@ internal sealed class DocumentationFinder
         var manifestPath = Path.Combine(root, module.Name + ".psd1");
         try
         {
-            var sb = _cmdlet.InvokeCommand.NewScriptBlock("$m = Test-ModuleManifest -Path $args[0]; $m.PrivateData.PSData.PSPublishModuleDelivery");
+            var sb = _cmdlet.InvokeCommand.NewScriptBlock("$m = Test-ModuleManifest -Path $args[0]; $m.PrivateData.PSData.Delivery");
             var delivery = sb.Invoke(manifestPath).FirstOrDefault() as PSObject;
             if (delivery != null)
             {
                 opts.InternalsPath = (string)(Get(delivery, "InternalsPath") ?? "Internals");
-                var irr = Get(delivery, "IncludeRootReadme");
-                var ich = Get(delivery, "IncludeRootChangelog");
-                var ilc = Get(delivery, "IncludeRootLicense");
-                opts.IncludeRootReadme = irr is bool b1 ? b1 : true;
-                opts.IncludeRootChangelog = ich is bool b2 ? b2 : true;
-                opts.IncludeRootLicense = ilc is bool b3 ? b3 : true;
-                opts.ReadmeDestination = (string)(Get(delivery, "ReadmeDestination") ?? "Internals");
-                opts.ChangelogDestination = (string)(Get(delivery, "ChangelogDestination") ?? "Internals");
-                opts.LicenseDestination = (string)(Get(delivery, "LicenseDestination") ?? "Internals");
+                var sp = Get(delivery, "ScriptsPath") as string;
+                if (!string.IsNullOrWhiteSpace(sp)) opts.ScriptsPath = sp!;
+                var docs = Get(delivery, "DocsPaths");
+                if (docs is System.Collections.IEnumerable en)
+                {
+                    var list = new System.Collections.Generic.List<string>();
+                    foreach (var o in en) { var s = o?.ToString(); if (!string.IsNullOrWhiteSpace(s)) list.Add(s!); }
+                    opts.DocsPaths = list;
+                }
                 opts.IntroFile = Get(delivery, "IntroFile") as string;
                 opts.UpgradeFile = Get(delivery, "UpgradeFile") as string;
             }

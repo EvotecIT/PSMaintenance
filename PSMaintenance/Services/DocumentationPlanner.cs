@@ -30,8 +30,6 @@ internal sealed class DocumentationPlanner
         public bool Intro { get; set; }
         public bool Upgrade { get; set; }
         public bool All { get; set; }
-        public bool PreferRepository { get; set; } // legacy
-        public bool FromRepository { get; set; }   // legacy
         public bool Online { get; set; }
         public DocumentationMode Mode { get; set; } = DocumentationMode.PreferLocal;
         public bool ShowDuplicates { get; set; }
@@ -163,7 +161,6 @@ internal sealed class DocumentationPlanner
                     }
                 }
                 res.UsedRemote = anyRemote;
-                // When PreferRepository is set, we still keep local standard docs so users can compare.
                 // Remote items are added first; local will be added below when resolving 'items'.
             }
         }

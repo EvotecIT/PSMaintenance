@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Management.Automation;
+using System.Runtime.InteropServices;
 
 namespace PSMaintenance;
 
@@ -9,6 +10,15 @@ namespace PSMaintenance;
 /// Copies only PowerShell scripts from a module's Internals\Scripts folder to a destination path.
 /// The destination is flattened (no Module/Version subfolders).
 /// </summary>
+/// <example>
+///   <code>Install-ModuleScript -Name EFAdminManager -Path 'C:\Tools' -Verbose</code>
+/// </example>
+/// <example>
+///   <code>Install-ModuleScript -Name EFAdminManager -Path 'C:\Tools' -Include 'Repair-*' -Unblock -OnExists Overwrite</code>
+/// </example>
+/// <example>
+///   <code>Get-Module -ListAvailable EFAdminManager | Install-ModuleScript -Path 'C:\Tools' -ListOnly</code>
+/// </example>
 [Cmdlet(VerbsLifecycle.Install, "ModuleScript", DefaultParameterSetName = "ByName", SupportsShouldProcess = true)]
 [Alias("Install-ModuleScripts", "Install-Scripts")]
 public sealed class InstallModuleScriptCommand : PSCmdlet
@@ -54,6 +64,10 @@ public sealed class InstallModuleScriptCommand : PSCmdlet
     /// <summary>Show which files would be copied without performing any changes.</summary>
     [Parameter]
     public SwitchParameter ListOnly { get; set; }
+
+    /// <summary>When set, attempts to remove the Windows Zone.Identifier (unblock) on copied files.</summary>
+    [Parameter]
+    public SwitchParameter Unblock { get; set; }
 
     /// <summary>
     /// Entry point: resolves the module location and copies matching scripts to the destination
@@ -130,6 +144,14 @@ public sealed class InstallModuleScriptCommand : PSCmdlet
                 {
                     try { File.SetAttributes(target, FileAttributes.Normal); } catch { /* ignore */ }
                 }
+                if (Unblock && RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                {
+                    try
+                    {
+                        InvokeCommand.InvokeScript("param($p) Unblock-File -LiteralPath $p -ErrorAction SilentlyContinue", new object[] { target });
+                    }
+                    catch { /* ignore */ }
+                }
                 WriteVerbose($"Copied: {rel}");
             }
         }
@@ -144,7 +166,7 @@ public sealed class InstallModuleScriptCommand : PSCmdlet
         {
             try
             {
-                // (Test-ModuleManifest).PrivateData.PSData.PSPublishModuleDelivery.InternalsPath
+                // (Test-ModuleManifest).PrivateData.PSData.Delivery.InternalsPath
                 // If present, prefer that location
                 // We call PowerShell to evaluate the manifest hashtable
                 // Note: we cannot access cmdlet here; keep it simple and fallback to default

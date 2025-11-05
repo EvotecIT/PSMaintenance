@@ -65,10 +65,6 @@ public sealed partial class GetModuleDocumentationCommand
     public string DefaultCodeLanguage { get; set; } = "Auto";
 
     // Repository support
-    /// <summary>Pull documentation directly from the module repository when local files are absent.</summary>
-    [Parameter] public SwitchParameter FromRepository { get; set; }
-    /// <summary>Prefer remote repository documents even if local files exist.</summary>
-    [Parameter] public SwitchParameter PreferRepository { get; set; }
     /// <summary>Branch name to use when fetching remote docs. If omitted, the provider default branch is used.</summary>
     [Parameter] public string? RepositoryBranch { get; set; }
     /// <summary>Personal Access Token for private repositories. Env fallbacks: PG_GITHUB_TOKEN/GITHUB_TOKEN or PG_AZDO_PAT/AZURE_DEVOPS_EXT_PAT.</summary>

@@ -27,7 +27,7 @@ namespace PSMaintenance;
 ///   <code>Install-ModuleDocumentation -Name EFAdminManager -Path C:\\Docs -OnExists Merge -Force</code>
 /// </example>
 /// <example>
-///   <code>New-ConfigurationInformation -IncludeAll 'Internals\\' ; New-ConfigurationDelivery -Enable -InternalsPath 'Internals' -DocumentationOrder '01-Intro.md','02-HowTo.md' -IncludeRootReadme -IncludeRootChangelog</code>
+///   <code>New-ConfigurationInformation -IncludeAll 'Internals\\' ; New-ConfigurationDelivery -Enable -InternalsPath 'Internals' -DocumentationOrder '01-Intro.md','02-HowTo.md'</code>
 /// </example>
 [Cmdlet(VerbsLifecycle.Install, "ModuleDocumentation", DefaultParameterSetName = "ByName", SupportsShouldProcess = true)]
 [Alias("Install-Documentation")]
