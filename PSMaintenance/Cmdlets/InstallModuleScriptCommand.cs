@@ -11,13 +11,22 @@ namespace PSMaintenance;
 /// The destination is flattened (no Module/Version subfolders).
 /// </summary>
 /// <example>
+///   <summary>Copy all files from Internals\Scripts to a tools folder</summary>
+///   <prefix>PS&gt; </prefix>
 ///   <code>Install-ModuleScript -Name EFAdminManager -Path 'C:\Tools' -Verbose</code>
+///   <para>Copies every file under Internals\Scripts recursively into C:\Tools, preserving subfolders. Shows each copied file.</para>
 /// </example>
 /// <example>
+///   <summary>Copy only specific scripts, unblocking and overwriting</summary>
+///   <prefix>PS&gt; </prefix>
 ///   <code>Install-ModuleScript -Name EFAdminManager -Path 'C:\Tools' -Include 'Repair-*' -Unblock -OnExists Overwrite</code>
+///   <para>Limits to files that start with Repair-, removes Windows Zone.Identifier (on Windows), and overwrites existing files.</para>
 /// </example>
 /// <example>
+///   <summary>Preview planned actions without copying</summary>
+///   <prefix>PS&gt; </prefix>
 ///   <code>Get-Module -ListAvailable EFAdminManager | Install-ModuleScript -Path 'C:\Tools' -ListOnly</code>
+///   <para>Shows Source, Destination, and chosen action for each file without writing anything.</para>
 /// </example>
 [Cmdlet(VerbsLifecycle.Install, "ModuleScript", DefaultParameterSetName = "ByName", SupportsShouldProcess = true)]
 [Alias("Install-ModuleScripts", "Install-Scripts")]
