@@ -45,7 +45,7 @@ public sealed class InstallModuleScriptCommand : PSCmdlet
     [Parameter]
     public string ScriptsRelativePath { get; set; } = System.IO.Path.Combine("Internals", "Scripts");
 
-    /// <summary>Wildcard include filters (relative to the scripts folder). Defaults to '*.ps1'.</summary>
+    /// <summary>Wildcard include filters (relative to the scripts folder). Defaults to '*' (all files).</summary>
     [Parameter]
     public string[]? Include { get; set; }
 
@@ -90,16 +90,37 @@ public sealed class InstallModuleScriptCommand : PSCmdlet
         var dest = PathHelper.Normalize(Path);
         PathHelper.EnsureDirectory(dest);
 
-        var includes = (Include == null || Include.Length == 0) ? new[] { "*.ps1" } : Include;
+        var includes = (Include == null || Include.Length == 0) ? new[] { "*" } : Include;
         var excludes = Exclude ?? Array.Empty<string>();
 
-        var files = Directory.GetFiles(scriptsRoot, "*", SearchOption.AllDirectories)
-            .Where(f => MatchesAny(f, scriptsRoot, includes) && !MatchesAny(f, scriptsRoot, excludes))
-            .ToList();
+        WriteVerbose($"Scanning scripts root: {scriptsRoot}");
+        WriteVerbose($"Include: {string.Join(", ", includes)}; Exclude: {(excludes.Length>0?string.Join(", ", excludes):"<none>")}");
+
+        // Fast path: default include (*.ps1) with no excludes → use filesystem filter
+        var files = new System.Collections.Generic.List<string>();
+        bool defaultAllOnly = (Include == null || Include.Length == 0) && (Exclude == null || Exclude.Length == 0);
+        if (defaultAllOnly)
+        {
+            files.AddRange(Directory.GetFiles(scriptsRoot, "*", SearchOption.AllDirectories));
+        }
+        else
+        {
+            files = Directory.GetFiles(scriptsRoot, "*", SearchOption.AllDirectories)
+                .Where(f => MatchesAny(f, scriptsRoot, includes) && !MatchesAny(f, scriptsRoot, excludes))
+                .ToList();
+        }
 
         if (files.Count == 0)
         {
-            WriteVerbose($"No matching scripts found in '{scriptsRoot}'.");
+            var total = Directory.GetFiles(scriptsRoot, "*", SearchOption.AllDirectories).Length;
+            WriteVerbose($"No matching scripts found in '{scriptsRoot}' (total files under root: {total}).");
+            if (total > 0)
+            {
+                foreach (var sample in Directory.GetFiles(scriptsRoot, "*", SearchOption.AllDirectories).Take(10))
+                {
+                    WriteVerbose($"  • Found file: {System.IO.Path.GetFileName(sample)}");
+                }
+            }
             return;
         }
 
@@ -189,10 +210,12 @@ public sealed class InstallModuleScriptCommand : PSCmdlet
     {
         if (patterns == null || patterns.Length == 0) return true;
         var rel = fullPath.Substring(root.Length).TrimStart(System.IO.Path.DirectorySeparatorChar, System.IO.Path.AltDirectorySeparatorChar);
+        var name = System.IO.Path.GetFileName(fullPath);
         foreach (var p in patterns)
         {
             var wc = new WildcardPattern(p, WildcardOptions.IgnoreCase);
-            if (wc.IsMatch(rel)) return true;
+            // Match either the relative path or just the file name to be friendly
+            if (wc.IsMatch(rel) || wc.IsMatch(name)) return true;
         }
         return false;
     }
