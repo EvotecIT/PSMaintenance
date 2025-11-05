@@ -1,5 +1,6 @@
 ﻿Import-Module "$PSScriptRoot\..\PSMaintenance.psd1" -Force
 
+Show-ModuleDocumentation -Name 'EFAdminManager' -Verbose -Online
 
 return
 #Show-ModuleDocumentation -Name 'PSPublishModule' -Verbose -Online

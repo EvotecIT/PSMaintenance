@@ -368,6 +368,7 @@ public sealed partial class ShowModuleDocumentationCommand : PSCmdlet
         };
         var modeLabel = reqObj.Online ? ($"Online/{reqObj.Mode}") : "LocalOnly";
         WriteVerbose($"Planning documents (mode: {modeLabel})...");
+        // Execute plan (with optional repo logging)
         var plan = planner.Execute(reqObj);
 
         // Verbose summary of repository/local docs discovered
@@ -382,6 +383,11 @@ public sealed partial class ShowModuleDocumentationCommand : PSCmdlet
                 {
                     WriteVerbose("No repository docs found at the requested paths. Verify branch and folder names.");
                 }
+                // Also report standard remote tabs presence
+                bool remReadme = plan.Items.Any(i => string.Equals(i.Source, "Remote", StringComparison.OrdinalIgnoreCase) && string.Equals(i.Kind, "FILE", StringComparison.OrdinalIgnoreCase) && ((i.FileName ?? i.Title).StartsWith("README", StringComparison.OrdinalIgnoreCase)));
+                bool remChlog  = plan.Items.Any(i => string.Equals(i.Source, "Remote", StringComparison.OrdinalIgnoreCase) && string.Equals(i.Kind, "FILE", StringComparison.OrdinalIgnoreCase) && ((i.FileName ?? i.Title).StartsWith("CHANGELOG", StringComparison.OrdinalIgnoreCase)));
+                bool remLic    = plan.Items.Any(i => string.Equals(i.Source, "Remote", StringComparison.OrdinalIgnoreCase) && string.Equals(i.Kind, "FILE", StringComparison.OrdinalIgnoreCase) && ((i.FileName ?? i.Title).StartsWith("LICENSE", StringComparison.OrdinalIgnoreCase)));
+                WriteVerbose($"Remote standard tabs: README={(remReadme ? "yes" : "no")}, CHANGELOG={(remChlog ? "yes" : "no")}, LICENSE={(remLic ? "yes" : "no")}");
             }
             if (localDocs > 0) { WriteVerbose($"Internals docs discovered: {localDocs}"); }
         }

@@ -213,55 +213,38 @@ internal sealed class DocumentationPlanner
             }
         }
 
-        // Fill missing standard docs from repository if available
+        // Remote standard docs (README/CHANGELOG/LICENSE)
         try
         {
-            bool wantRemoteBackfill = !string.IsNullOrWhiteSpace(req.ProjectUri);
-            if (wantRemoteBackfill)
+            bool wantRemoteFetch = !string.IsNullOrWhiteSpace(req.ProjectUri);
+            if (wantRemoteFetch)
             {
                 bool hasReadme = res.Items.Any(i => i.Kind == "FILE" && ((i.FileName ?? i.Title).StartsWith("README", StringComparison.OrdinalIgnoreCase)));
                 bool hasChlog  = res.Items.Any(i => i.Kind == "FILE" && ((i.FileName ?? i.Title).StartsWith("CHANGELOG", StringComparison.OrdinalIgnoreCase)));
                 bool hasLic    = res.Items.Any(i => i.Kind == "FILE" && ((i.FileName ?? i.Title).StartsWith("LICENSE", StringComparison.OrdinalIgnoreCase)));
+                bool forceRemoteStandard = (req.Mode == DocumentationMode.All || req.Mode == DocumentationMode.PreferRemote);
 
-                if (!(hasReadme && hasChlog && hasLic))
+                var info = RepoUrlParser.Parse(req.ProjectUri!);
+                var token = ResolveToken(req.RepositoryToken);
+                if (string.IsNullOrEmpty(token)) { token = TokenStore.GetToken(info.Host) ?? string.Empty; }
+                var client = RepoClientFactory.Create(info, token);
+                if (client != null)
                 {
-                    var info = RepoUrlParser.Parse(req.ProjectUri!);
-                    var token = ResolveToken(req.RepositoryToken);
-                    if (string.IsNullOrEmpty(token))
+                    string branch = string.IsNullOrWhiteSpace(req.RepositoryBranch) ? client.GetDefaultBranch() : req.RepositoryBranch!;
+                    if (forceRemoteStandard || !hasReadme)
                     {
-                        token = TokenStore.GetToken(info.Host) ?? string.Empty;
+                        var readme = TryFetchFirst(client, branch, new[] { "README.md", "README.MD", "Readme.md" });
+                        if (!string.IsNullOrEmpty(readme)) { var di = MakeContentItem(req, "README", readme!); di.Source = "Remote"; di.FileName = "README.md"; di.Title = "README"; res.Items.Add(di); }
                     }
-                    var client = RepoClientFactory.Create(info, token);
-                    if (client != null)
+                    if (forceRemoteStandard || !hasChlog)
                     {
-                        string branch = string.IsNullOrWhiteSpace(req.RepositoryBranch) ? client.GetDefaultBranch() : req.RepositoryBranch!;
-                        if (!hasReadme)
-                        {
-                            var readme = TryFetchFirst(client, branch, new[] { "README.md", "README.MD", "Readme.md" });
-                            if (!string.IsNullOrEmpty(readme)) {
-                                var di = MakeContentItem(req, "README", readme!);
-                                di.Source = "Remote"; di.FileName = "README.md"; di.Title = "README";
-                                res.Items.Add(di);
-                            }
-                        }
-                        if (!hasChlog)
-                        {
-                            var ch = TryFetchFirst(client, branch, new[] { "CHANGELOG.md", "CHANGELOG.MD", "Changelog.md" });
-                            if (!string.IsNullOrEmpty(ch)) {
-                                var di = MakeContentItem(req, "CHANGELOG", ch!);
-                                di.Source = "Remote"; di.FileName = "CHANGELOG.md"; di.Title = "CHANGELOG";
-                                res.Items.Add(di);
-                            }
-                        }
-                        if (!hasLic)
-                        {
-                            var lc = TryFetchFirst(client, branch, new[] { "LICENSE", "LICENSE.md", "LICENSE.txt" });
-                            if (!string.IsNullOrEmpty(lc)) {
-                                var di = MakeContentItem(req, "LICENSE", lc!);
-                                di.Source = "Remote"; di.FileName = "LICENSE"; di.Title = "LICENSE";
-                                res.Items.Add(di);
-                            }
-                        }
+                        var ch = TryFetchFirst(client, branch, new[] { "CHANGELOG.md", "CHANGELOG.MD", "Changelog.md" });
+                        if (!string.IsNullOrEmpty(ch)) { var di = MakeContentItem(req, "CHANGELOG", ch!); di.Source = "Remote"; di.FileName = "CHANGELOG.md"; di.Title = "CHANGELOG"; res.Items.Add(di); }
+                    }
+                    if (forceRemoteStandard || !hasLic)
+                    {
+                        var lc = TryFetchFirst(client, branch, new[] { "LICENSE", "LICENSE.md", "LICENSE.txt" });
+                        if (!string.IsNullOrEmpty(lc)) { var di = MakeContentItem(req, "LICENSE", lc!); di.Source = "Remote"; di.FileName = "LICENSE"; di.Title = "LICENSE"; res.Items.Add(di); }
                     }
                 }
 
