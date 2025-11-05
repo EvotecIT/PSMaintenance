@@ -8,7 +8,7 @@
     Description          = 'PSMaintenance: documentation viewer and module maintenance toolkit'
     FunctionsToExport    = @()
     GUID                 = 'da587bcf-c954-402b-91d2-04ebd2bc2ea5'
-    ModuleVersion        = '0.5.0'
+    ModuleVersion        = '0.1.0'
     PowerShellVersion    = '5.1'
     PrivateData          = @{
         PSData = @{

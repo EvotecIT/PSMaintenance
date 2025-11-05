@@ -1,7 +1,7 @@
 ﻿Build-Module -ModuleName 'PSMaintenance' {
     # Usual defaults as per standard module
     $Manifest = [ordered] @{
-        ModuleVersion        = '0.5.0'
+        ModuleVersion        = '0.1.0'
         CompatiblePSEditions = @('Desktop', 'Core')
         GUID                 = 'da587bcf-c954-402b-91d2-04ebd2bc2ea5'
         Author               = 'Przemyslaw Klys'
@@ -75,7 +75,7 @@
         NETFramework                      = 'net472', 'net8.0'
         DotSourceLibraries                = $true
         NETSearchClass                    = 'PSMaintenance.InstallPGModuleDocumentationCommand'
-        RefreshPSD1Only                   = $true
+        RefreshPSD1Only                   = $false
         NETBinaryModuleDocumentation      = $true
     }
 
