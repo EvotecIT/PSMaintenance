@@ -10,22 +10,40 @@ namespace PSMaintenance;
 /// <para type="synopsis">Displays module documentation (README, CHANGELOG, LICENSE, Intro/Upgrade) in the console.</para>
 /// <para type="description">Resolves documentation files from an installed module (root or Internals folder) and renders them with Spectre.Console. When local files are absent or when requested, it can fetch files directly from the module's repository specified by <c>PrivateData.PSData.ProjectUri</c> (GitHub or Azure DevOps), optionally using a Personal Access Token.</para>
 /// <example>
+///   <summary>Export HTML using only local documentation</summary>
+///   <prefix>PS&gt; </prefix>
 ///   <code>Show-ModuleDocumentation -Name EFAdminManager</code>
+///   <para>Builds a single HTML page with tabs for README, CHANGELOG, LICENSE, Internals\Docs, Commands, and Dependencies.</para>
 /// </example>
 /// <example>
+///   <summary>Include remote docs (branch and paths from manifest)</summary>
+///   <prefix>PS&gt; </prefix>
 ///   <code>Show-ModuleDocumentation -Name EFAdminManager -Online</code>
+///   <para>Fetches repository docs and standard tabs in addition to local content. Requires ProjectUri in the module manifest.</para>
 /// </example>
 /// <example>
+///   <summary>Prefer remote versions and scope docs to a subfolder</summary>
+///   <prefix>PS&gt; </prefix>
 ///   <code>Show-ModuleDocumentation -Name EFAdminManager -Online -Mode PreferRemote -RepositoryPaths 'Docs/en-US'</code>
+///   <para>Remote README/CHANGELOG take precedence. Only documents under Docs/en-US are added to the Documentation tab.</para>
 /// </example>
 /// <example>
+///   <summary>Point directly at an unpacked module root</summary>
+///   <prefix>PS&gt; </prefix>
 ///   <code>Show-ModuleDocumentation -ModuleBase 'C:\\Program Files\\WindowsPowerShell\\Modules\\EFAdminManager\\3.0.0'</code>
+///   <para>Renders documentation from a specific module folder without resolving by name.</para>
 /// </example>
 /// <example>
+///   <summary>Render examples with prose first</summary>
+///   <prefix>PS&gt; </prefix>
 ///   <code>Show-ModuleDocumentation -Name EFAdminManager -ExamplesLayout ProseFirst</code>
+///   <para>Places example descriptions above their code blocks for easier reading.</para>
 /// </example>
 /// <example>
+///   <summary>Use environment tokens for private repositories</summary>
+///   <prefix>PS&gt; </prefix>
 ///   <code>Set-ModuleDocumentation -FromEnvironment; Show-ModuleDocumentation -Name EFAdminManager -Online</code>
+///   <para>Reads PG_GITHUB_TOKEN / PG_AZDO_PAT and includes remote documents in the export.</para>
 /// </example>
 /// </summary>
 [Cmdlet(VerbsCommon.Show, "ModuleDocumentation", DefaultParameterSetName = "ByName")]

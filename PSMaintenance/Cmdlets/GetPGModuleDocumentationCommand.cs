@@ -10,16 +10,28 @@ namespace PSMaintenance;
 /// <para type="synopsis">Gets module documentation (README, CHANGELOG, LICENSE, Intro/Upgrade) and renders it in the console.</para>
 /// <para type="description">Resolves documentation files from an installed module (root or Internals folder) and renders them with Spectre.Console. When local files are absent, it will backfill from the module's repository specified by <c>PrivateData.PSData.ProjectUri</c> (GitHub or Azure DevOps), using a token when necessary.</para>
 /// <example>
+///   <summary>Show default documentation in the console</summary>
+///   <prefix>PS&gt; </prefix>
 ///   <code>Get-ModuleDocumentation -Name PSPublishModule</code>
+///   <para>Resolves README/CHANGELOG/LICENSE and renders them in a readable console layout.</para>
 /// </example>
 /// <example>
+///   <summary>Show all standard documents</summary>
+///   <prefix>PS&gt; </prefix>
 ///   <code>Get-ModuleDocumentation -Name PSPublishModule -Type All</code>
+///   <para>Includes Introduction text (if present), plus README, CHANGELOG, and LICENSE.</para>
 /// </example>
 /// <example>
+///   <summary>List available files without rendering</summary>
+///   <prefix>PS&gt; </prefix>
 ///   <code>Get-ModuleDocumentation -Name EFAdminManager -List</code>
+///   <para>Enumerates candidate files found in the module root and Internals, for quick inspection.</para>
 /// </example>
 /// <example>
+///   <summary>Prefer Internals copies of specific documents</summary>
+///   <prefix>PS&gt; </prefix>
 ///   <code>Get-ModuleDocumentation -Name EFAdminManager -Readme -License -PreferInternals</code>
+///   <para>When both root and Internals versions exist, selects the Internals variant for display.</para>
 /// </example>
 /// </summary>
 [Cmdlet(VerbsCommon.Get, "ModuleDocumentation", DefaultParameterSetName = "ByName")]

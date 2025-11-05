@@ -8,21 +8,30 @@ namespace PSMaintenance;
 /// <para type="synopsis">Configures repository access for documentation (stores/revokes tokens).</para>
 /// <para type="description">Stores Personal Access Tokens for GitHub and/or Azure DevOps under the current user profile so that PSMaintenance can access private repositories when rendering documentation from a repository. On Windows, tokens are protected with DPAPI; on other platforms they are stored as Base64 (best effort).</para>
 /// <example>
+///   <summary>Store a GitHub token for private repositories</summary>
+///   <prefix>PS&gt; </prefix>
 ///   <code>Set-ModuleDocumentation -GitHubToken 'ghp_xxx'</code>
+///   <para>Saves the token under the current user profile (DPAPI on Windows) so -Online can access private GitHub repos.</para>
 /// </example>
 /// <example>
+///   <summary>Store an Azure DevOps PAT</summary>
+///   <prefix>PS&gt; </prefix>
 ///   <code>Set-ModuleDocumentation -AzureDevOpsPat 'azdopat_xxx'</code>
+///   <para>Persists a PAT with Code (Read) scope for accessing private Azure DevOps repositories.</para>
 /// </example>
 /// <example>
-///   <code>Set-ModuleDocumentation -FromEnvironment</code>
+///   <summary>Read tokens from environment variables (CI-friendly)</summary>
+///   <prefix>PS&gt; </prefix>
+///   <code>$env:PG_GITHUB_TOKEN='ghp_xxx'; $env:PG_AZDO_PAT='azdopat_xxx'; Set-ModuleDocumentation -FromEnvironment</code>
+///   <para>Loads tokens from environment and stores them in the local token store for subsequent runs.</para>
 /// </example>
 /// <example>
+///   <summary>Clear any stored tokens</summary>
+///   <prefix>PS&gt; </prefix>
 ///   <code>Set-ModuleDocumentation -Clear</code>
+///   <para>Removes persisted tokens from the local token store.</para>
 /// </example>
 /// </summary>
-/// <example>
-///   <code>$env:PG_GITHUB_TOKEN='ghp_xxx'; $env:PG_AZDO_PAT='azdopat_xxx'; Set-ModuleDocumentation -FromEnvironment</code>
-/// </example>
 [Cmdlet(VerbsCommon.Set, "ModuleDocumentation", SupportsShouldProcess = true)]
 [Alias("Set-Documentation")]
 public sealed class SetModuleDocumentationCommand : PSCmdlet
