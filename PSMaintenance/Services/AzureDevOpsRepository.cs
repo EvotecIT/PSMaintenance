@@ -109,4 +109,10 @@ internal sealed class AzureDevOpsRepository : IRepoClient
         catch { }
         return result;
     }
+
+    public List<RepoRelease> ListReleases()
+    {
+        // Azure DevOps Git repos don't expose Releases like GitHub; return empty to allow caller fallback.
+        return new List<RepoRelease>();
+    }
 }

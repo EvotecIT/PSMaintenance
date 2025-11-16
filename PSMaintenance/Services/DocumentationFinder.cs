@@ -169,6 +169,37 @@ internal sealed class DocumentationFinder
         }
     }
 
+    /// <summary>
+    /// Finds common community health files (CONTRIBUTING, SECURITY, SUPPORT, CODE_OF_CONDUCT).
+    /// </summary>
+    public System.Collections.Generic.IEnumerable<FileInfo> ResolveCommunityFiles((string RootBase, string? InternalsBase, DeliveryOptions Options) bases, System.Collections.Generic.IEnumerable<string>? extraDocsPaths = null)
+    {
+        var names = new [] { "CONTRIBUTING", "SECURITY", "SUPPORT", "CODE_OF_CONDUCT", "CODE_OF_CODUNDUCT", "CODE-OF-CONDUCT" };
+        var exts = new [] { ".md", ".markdown", ".txt" , string.Empty};
+        var seen = new System.Collections.Generic.HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var roots = new System.Collections.Generic.List<string> { bases.RootBase };
+        if (!string.IsNullOrWhiteSpace(bases.InternalsBase)) roots.Add(bases.InternalsBase!);
+        if (extraDocsPaths != null)
+        {
+            foreach (var docPath in extraDocsPaths)
+            {
+                if (string.IsNullOrWhiteSpace(docPath)) continue;
+                roots.Add(Path.Combine(bases.RootBase, docPath));
+            }
+        }
+        foreach (var r in roots.Where(Directory.Exists))
+        {
+            foreach (var n in names)
+            {
+                foreach (var ext in exts)
+                {
+                    var path = Path.Combine(r, n + ext);
+                    if (File.Exists(path) && seen.Add(path)) yield return new FileInfo(path);
+                }
+            }
+        }
+    }
+
     private static object? Get(object obj, string name)
     {
         if (obj is PSObject pso)

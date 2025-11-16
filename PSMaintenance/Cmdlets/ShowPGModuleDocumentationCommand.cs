@@ -229,6 +229,7 @@ public sealed partial class ShowModuleDocumentationCommand : PSCmdlet
         var formatsToProcess = new System.Collections.Generic.List<string>();
         var typesToProcess   = new System.Collections.Generic.List<string>();
         string[]? docsPaths  = null;
+        string? changelogPath = null;
         var manifestPathMeta = System.IO.Directory.GetFiles(rootBase, "*.psd1", System.IO.SearchOption.TopDirectoryOnly).FirstOrDefault();
         if (!string.IsNullOrEmpty(manifestPathMeta))
         {
@@ -291,6 +292,14 @@ public sealed partial class ShowModuleDocumentationCommand : PSCmdlet
                     var list = new System.Collections.Generic.List<string>();
                     foreach (var d in EnumerateItems(docsEnum)) { var s = d?.ToString(); if (!string.IsNullOrWhiteSpace(s)) list.Add(s!); }
                     if (list.Count > 0) docsPaths = list.ToArray();
+                }
+                catch { }
+
+                // Changelog path for releases summary
+                try
+                {
+                    var possible = System.IO.Directory.GetFiles(rootBase, "CHANGELOG*", System.IO.SearchOption.TopDirectoryOnly).FirstOrDefault();
+                    if (!string.IsNullOrEmpty(possible)) changelogPath = possible;
                 }
                 catch { }
 
@@ -409,7 +418,8 @@ public sealed partial class ShowModuleDocumentationCommand : PSCmdlet
             TitleVersion = titleVersion,
             FormatsToProcess = formatsToProcess,
             TypesToProcess = typesToProcess,
-            DocsPaths = docsPaths
+            DocsPaths = docsPaths,
+            LocalChangelogPath = changelogPath
         };
         var modeLabel = reqObj.Online ? ($"Online/{reqObj.Mode}") : "LocalOnly";
         WriteVerbose($"Planning documents (mode: {modeLabel})...");

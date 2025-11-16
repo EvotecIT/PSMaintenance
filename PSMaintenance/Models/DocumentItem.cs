@@ -7,8 +7,8 @@ internal sealed class DocumentItem
 {
     /// <summary>Display title used in console/HTML renderers.</summary>
     public string Title { get; set; } = string.Empty;
-    /// <summary>Logical kind: FILE, INTRO, UPGRADE, LINKS, ABOUT, FORMAT, TYPE, SCRIPT, DOC.</summary>
-    public string Kind { get; set; } = "FILE"; // FILE, INTRO, UPGRADE, LINKS, ABOUT, FORMAT, TYPE, SCRIPT, DOC
+    /// <summary>Logical kind: FILE, INTRO, UPGRADE, LINKS, ABOUT, FORMAT, TYPE, SCRIPT, DOC, COMMUNITY, RELEASES.</summary>
+    public string Kind { get; set; } = "FILE"; // FILE, INTRO, UPGRADE, LINKS, ABOUT, FORMAT, TYPE, SCRIPT, DOC, COMMUNITY, RELEASES
     /// <summary>Markdown content.</summary>
     public string Content { get; set; } = string.Empty; // markdown content
     /// <summary>Optional local file path when the item represents a file on disk.</summary>

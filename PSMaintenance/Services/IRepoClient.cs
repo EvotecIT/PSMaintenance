@@ -10,6 +10,8 @@ internal interface IRepoClient
     string GetDefaultBranch();
     string? GetFileContent(string path, string branch);
     List<(string Name, string Path)> ListFiles(string path, string branch);
+    /// <summary>Lists releases (tag, name, body, published, assets) when supported; returns empty when not implemented.</summary>
+    List<RepoRelease> ListReleases();
 }
 
 internal static class RepoClientFactory

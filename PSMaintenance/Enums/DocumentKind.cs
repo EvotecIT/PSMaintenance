@@ -19,6 +19,10 @@ public enum DocumentKind
     Format,
     /// <summary>PowerShell type extension files (*.Types.ps1xml).</summary>
     Types,
+    /// <summary>Community health files such as CONTRIBUTING/SECURITY/SUPPORT/CODE_OF_CONDUCT.</summary>
+    Community,
+    /// <summary>Aggregated releases/changelog overview.</summary>
+    Releases,
     /// <summary>A custom file path explicitly requested by the user.</summary>
     Custom
 }

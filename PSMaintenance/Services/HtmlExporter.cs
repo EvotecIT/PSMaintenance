@@ -49,12 +49,14 @@ internal sealed class HtmlExporter
                     col.Card(card => {
                         card.Body(body => {
                             body.Tabs(tabs => {
-                                // Standard docs (everything except SCRIPT/DOC/ABOUT/FORMAT/TYPE kinds)
+                                // Standard docs (everything except SCRIPT/DOC/ABOUT/FORMAT/TYPE/COMMUNITY/RELEASES kinds)
                                 var standard = list.Where(x => !string.Equals(x.Kind, "SCRIPT", System.StringComparison.OrdinalIgnoreCase)
                                                            && !string.Equals(x.Kind, "DOC", System.StringComparison.OrdinalIgnoreCase)
                                                            && !string.Equals(x.Kind, "ABOUT", System.StringComparison.OrdinalIgnoreCase)
                                                            && !string.Equals(x.Kind, "FORMAT", System.StringComparison.OrdinalIgnoreCase)
-                                                           && !string.Equals(x.Kind, "TYPE", System.StringComparison.OrdinalIgnoreCase))
+                                                           && !string.Equals(x.Kind, "TYPE", System.StringComparison.OrdinalIgnoreCase)
+                                                           && !string.Equals(x.Kind, "COMMUNITY", System.StringComparison.OrdinalIgnoreCase)
+                                                           && !string.Equals(x.Kind, "RELEASES", System.StringComparison.OrdinalIgnoreCase))
                                                    .ToList();
 
                                 // If both local and remote versions of README/CHANGELOG/LICENSE exist,
@@ -364,6 +366,43 @@ internal sealed class HtmlExporter
                                                 });
                                             }
                                         });
+                                    });
+                                }
+
+                                // Community health files (CONTRIBUTING/SECURITY/SUPPORT/CODE_OF_CONDUCT)
+                                var community = list.Where(x => string.Equals(x.Kind, "COMMUNITY", System.StringComparison.OrdinalIgnoreCase)).ToList();
+                                if (community.Count > 0)
+                                {
+                                    log?.Invoke($"Adding Community tab with {community.Count} items...");
+                                    tabs.AddTab("👥 Community", panel =>
+                                    {
+                                        panel.Tabs(inner => {
+                                            foreach (var c in community.OrderBy(x => x.FileName ?? x.Title, StringComparer.OrdinalIgnoreCase))
+                                            {
+                                                var name = string.IsNullOrWhiteSpace(c.FileName) ? c.Title : c.FileName;
+                                                inner.AddTab(name ?? string.Empty, p =>
+                                                {
+                                                    var md = c.Content;
+                                                    if (string.IsNullOrWhiteSpace(md) && !string.IsNullOrWhiteSpace(c.Path) && File.Exists(c.Path))
+                                                    {
+                                                        md = File.ReadAllText(c.Path);
+                                                    }
+                                                    p.Markdown(md ?? string.Empty, new MarkdownOptions { HeadingsBaseLevel = 2, AutolinkBareUrls = true, Sanitize = true, AllowRawHtmlInline = true, AllowRawHtmlBlocks = true });
+                                                });
+                                            }
+                                        });
+                                    });
+                                }
+
+                                // Releases summary
+                                var releases = list.Where(x => string.Equals(x.Kind, "RELEASES", System.StringComparison.OrdinalIgnoreCase)).ToList();
+                                if (releases.Count > 0)
+                                {
+                                    log?.Invoke("Adding Releases tab...");
+                                    var rel = releases.Last();
+                                    tabs.AddTab("📦 Releases", panel =>
+                                    {
+                                        panel.Markdown(rel.Content ?? string.Empty, new MarkdownOptions { HeadingsBaseLevel = 2, AutolinkBareUrls = true, Sanitize = true, AllowRawHtmlInline = true, AllowRawHtmlBlocks = true });
                                     });
                                 }
 

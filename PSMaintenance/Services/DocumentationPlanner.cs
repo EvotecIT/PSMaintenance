@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Management.Automation;
 
 namespace PSMaintenance;
@@ -39,6 +40,7 @@ internal sealed class DocumentationPlanner
         public System.Collections.Generic.IEnumerable<string>? FormatsToProcess { get; set; }
         public System.Collections.Generic.IEnumerable<string>? TypesToProcess { get; set; }
         public System.Collections.Generic.IEnumerable<string>? DocsPaths { get; set; }
+        public string? LocalChangelogPath { get; set; }
     }
 
     internal sealed class Result
@@ -166,6 +168,21 @@ internal sealed class DocumentationPlanner
                                 continue;
                             }
 
+                            if (IsCommunityFile(lowerName))
+                            {
+                                res.Items.Add(new DocumentItem
+                                {
+                                    Title = Name ?? string.Empty,
+                                    Kind = "COMMUNITY",
+                                    Content = content!,
+                                    FileName = Name,
+                                    Path = Path,
+                                    Source = "Remote"
+                                });
+                                anyRemote = true;
+                                continue;
+                            }
+
                             if (ext == ".md" || ext == ".markdown" || ext == ".txt" || ext == ".help" || ext == ".help.txt")
                             {
                                 // Treat repository path content as documentation pages, not standard tabs
@@ -270,6 +287,18 @@ internal sealed class DocumentationPlanner
         }
         catch { }
 
+        // Community files (local)
+        try
+        {
+            var community = _finder.ResolveCommunityFiles((req.RootBase, req.InternalsBase, new DeliveryOptions()), req.DocsPaths);
+            foreach (var f in community)
+            {
+                string content; try { content = File.ReadAllText(f.FullName); } catch { continue; }
+                res.Items.Add(new DocumentItem { Title = BuildTitle(req, f.Name), Kind = "COMMUNITY", Path = f.FullName, FileName = f.Name, Content = content, Source = "Local" });
+            }
+        }
+        catch { }
+
         // Remote standard docs (README/CHANGELOG/LICENSE)
         try
         {
@@ -365,13 +394,18 @@ internal sealed class DocumentationPlanner
                             {
                                 var content = client2.GetFileContent(f.Path, branch2);
                                 if (string.IsNullOrEmpty(content)) continue;
-                                if (f.Name.StartsWith("about_", StringComparison.OrdinalIgnoreCase) && f.Name.EndsWith(".help.txt", StringComparison.OrdinalIgnoreCase))
-                                {
-                                    res.Items.Add(new DocumentItem { Title = f.Name, Kind = "ABOUT", Content = AboutToMarkdown(content!), FileName = f.Name, Path = f.Path, Source = "Remote" });
-                                    continue;
-                                }
-                                res.Items.Add(new DocumentItem { Title = f.Name, Kind = "DOC", Content = content!, FileName = f.Name, Path = f.Path, Source = "Remote" });
-                            }
+                        if (f.Name.StartsWith("about_", StringComparison.OrdinalIgnoreCase) && f.Name.EndsWith(".help.txt", StringComparison.OrdinalIgnoreCase))
+                        {
+                            res.Items.Add(new DocumentItem { Title = f.Name, Kind = "ABOUT", Content = AboutToMarkdown(content!), FileName = f.Name, Path = f.Path, Source = "Remote" });
+                            continue;
+                        }
+                        if (IsCommunityFile(f.Name))
+                        {
+                            res.Items.Add(new DocumentItem { Title = f.Name, Kind = "COMMUNITY", Content = content!, FileName = f.Name, Path = f.Path, Source = "Remote" });
+                            continue;
+                        }
+                        res.Items.Add(new DocumentItem { Title = f.Name, Kind = "DOC", Content = content!, FileName = f.Name, Path = f.Path, Source = "Remote" });
+                    }
                         }
                     }
                 }
@@ -466,6 +500,78 @@ internal sealed class DocumentationPlanner
                 res.Items.Add(new DocumentItem { Title = BuildTitle(req, "Links"), Kind = "FILE", Content = md.ToString() });
         }
 
+        // Release summary derived from CHANGELOG
+        try
+        {
+            string? changelogContent = null;
+            var remoteChangelog = res.Items.FirstOrDefault(i => string.Equals(i.Kind, "FILE", StringComparison.OrdinalIgnoreCase) && string.Equals(i.FileName, "CHANGELOG.md", StringComparison.OrdinalIgnoreCase) && string.Equals(i.Source, "Remote", StringComparison.OrdinalIgnoreCase));
+            if (remoteChangelog != null) changelogContent = remoteChangelog.Content;
+            if (string.IsNullOrEmpty(changelogContent))
+            {
+                if (!string.IsNullOrEmpty(req.LocalChangelogPath) && File.Exists(req.LocalChangelogPath))
+                {
+                    changelogContent = File.ReadAllText(req.LocalChangelogPath);
+                }
+            }
+            if (string.IsNullOrEmpty(changelogContent))
+            {
+                var localChlog = res.Items.FirstOrDefault(i => string.Equals(i.Kind, "FILE", StringComparison.OrdinalIgnoreCase) && (i.FileName ?? i.Title)?.StartsWith("CHANGELOG", StringComparison.OrdinalIgnoreCase) == true && string.Equals(i.Source, "Local", StringComparison.OrdinalIgnoreCase));
+                if (localChlog != null)
+                {
+                    changelogContent = string.IsNullOrEmpty(localChlog.Content) && !string.IsNullOrEmpty(localChlog.Path) && File.Exists(localChlog.Path)
+                        ? File.ReadAllText(localChlog.Path!)
+                        : localChlog.Content;
+                }
+            }
+            if (!string.IsNullOrEmpty(changelogContent))
+            {
+                var releasesMd = BuildReleaseSummary(changelogContent!);
+                if (!string.IsNullOrWhiteSpace(releasesMd))
+                {
+                    res.Items.Add(new DocumentItem { Title = BuildTitle(req, "Releases"), Kind = "RELEASES", Content = releasesMd, Source = string.IsNullOrEmpty(req.ProjectUri) ? "Local" : "Derived" });
+                }
+            }
+            // If changelog not present, try repo releases API
+            if (res.Items.All(i => !string.Equals(i.Kind, "RELEASES", StringComparison.OrdinalIgnoreCase)) && !string.IsNullOrWhiteSpace(req.ProjectUri))
+            {
+                try
+                {
+                    var info = RepoUrlParser.Parse(req.ProjectUri!);
+                    var token = ResolveToken(req.RepositoryToken);
+                    if (string.IsNullOrEmpty(token)) token = TokenStore.GetToken(info.Host) ?? string.Empty;
+                    var client = RepoClientFactory.Create(info, token);
+                    var rels = client?.ListReleases() ?? new List<RepoRelease>();
+                    if (rels.Count > 0)
+                    {
+                        var sb = new System.Text.StringBuilder();
+                        sb.AppendLine("# Releases (repository API)");
+                        foreach (var r in rels)
+                        {
+                            sb.Append("## ").Append(string.IsNullOrEmpty(r.Name) ? r.Tag : r.Name);
+                            if (r.PublishedAt.HasValue) sb.Append(" (" + r.PublishedAt.Value.ToString("yyyy-MM-dd") + ")");
+                            sb.AppendLine();
+                            if (!string.IsNullOrWhiteSpace(r.Body)) sb.AppendLine(r.Body.Trim()).AppendLine();
+                            if (r.Assets.Count > 0)
+                            {
+                                sb.AppendLine("### Assets");
+                                foreach (var a in r.Assets)
+                                {
+                                    sb.Append("- ").Append(a.Name);
+                                    if (a.Size.HasValue) sb.Append($" ({a.Size.Value / 1024} KB)");
+                                    if (!string.IsNullOrEmpty(a.DownloadUrl)) sb.Append($" — {a.DownloadUrl}");
+                                    sb.AppendLine();
+                                }
+                                sb.AppendLine();
+                            }
+                        }
+                        res.Items.Add(new DocumentItem { Title = BuildTitle(req, "Releases"), Kind = "RELEASES", Content = sb.ToString(), Source = "Remote" });
+                    }
+                }
+                catch { }
+            }
+        }
+        catch { }
+
         return res;
     }
 
@@ -510,6 +616,17 @@ internal sealed class DocumentationPlanner
         return n;
     }
 
+    private static bool IsCommunityFile(string lowerName)
+    {
+        if (string.IsNullOrEmpty(lowerName)) return false;
+        var trimmed = lowerName.Replace('-', '_');
+        return trimmed.Contains("contributing")
+               || trimmed.Contains("security")
+               || trimmed.Contains("support")
+               || trimmed.Contains("code_of_conduct")
+               || trimmed.Contains("code_of_codunduct");
+    }
+
     private static string AboutToMarkdown(string content)
     {
         if (string.IsNullOrWhiteSpace(content)) return string.Empty;
@@ -530,6 +647,31 @@ internal sealed class DocumentationPlanner
             {
                 sb.AppendLine(trimmed);
             }
+        }
+        return sb.ToString();
+    }
+
+    private static string BuildReleaseSummary(string changelogContent)
+    {
+        if (string.IsNullOrWhiteSpace(changelogContent)) return string.Empty;
+        var lines = changelogContent.Replace("\r\n", "\n").Split('\n');
+        var releases = new System.Collections.Generic.List<(string Version,string Title)>();
+        var rx = new System.Text.RegularExpressions.Regex("^##\\s*\\[?v?(?<ver>[^\\]]+)\\]?", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        foreach (var line in lines)
+        {
+            var m = rx.Match(line.Trim());
+            if (m.Success)
+            {
+                var ver = m.Groups["ver"].Value.Trim();
+                releases.Add((ver, line.TrimStart('#',' ')));
+            }
+        }
+        if (releases.Count == 0) return string.Empty;
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("# Releases (from CHANGELOG)");
+        foreach (var r in releases)
+        {
+            sb.Append("- ").Append(r.Version).AppendLine();
         }
         return sb.ToString();
     }
