@@ -226,6 +226,9 @@ public sealed partial class ShowModuleDocumentationCommand : PSCmdlet
 
         // Build module metadata from manifest
         ModuleInfoModel meta = new ModuleInfoModel();
+        var formatsToProcess = new System.Collections.Generic.List<string>();
+        var typesToProcess   = new System.Collections.Generic.List<string>();
+        string[]? docsPaths  = null;
         var manifestPathMeta = System.IO.Directory.GetFiles(rootBase, "*.psd1", System.IO.SearchOption.TopDirectoryOnly).FirstOrDefault();
         if (!string.IsNullOrEmpty(manifestPathMeta))
         {
@@ -269,6 +272,27 @@ public sealed partial class ShowModuleDocumentationCommand : PSCmdlet
                 {
                     var name = e?.ToString()?.Trim(); if (!string.IsNullOrEmpty(name)) meta.Dependencies.Add(new ModuleDependency { Kind = ModuleDependencyKind.External, Name = name! });
                 }
+
+                // Formats/Types
+                foreach (var f in EnumerateItems(psoFull.Properties["FormatsToProcess"]?.Value))
+                {
+                    var s = f?.ToString(); if (!string.IsNullOrWhiteSpace(s)) formatsToProcess.Add(s!);
+                }
+                foreach (var t in EnumerateItems(psoFull.Properties["TypesToProcess"]?.Value))
+                {
+                    var s = t?.ToString(); if (!string.IsNullOrWhiteSpace(s)) typesToProcess.Add(s!);
+                }
+
+                // Delivery DocsPaths (used for about/doc lookup)
+                try
+                {
+                    var docsVal = this.InvokeCommand.NewScriptBlock("(Test-ModuleManifest -Path $args[0]).PrivateData.PSData.Delivery.DocsPaths").Invoke(manifestPathMeta).FirstOrDefault();
+                    var docsEnum = docsVal is PSObject psoDocs ? psoDocs.BaseObject : docsVal;
+                    var list = new System.Collections.Generic.List<string>();
+                    foreach (var d in EnumerateItems(docsEnum)) { var s = d?.ToString(); if (!string.IsNullOrWhiteSpace(s)) list.Add(s!); }
+                    if (list.Count > 0) docsPaths = list.ToArray();
+                }
+                catch { }
 
                 // Enrich direct dependencies with installed manifest info (Version/Guid if missing)
                 foreach (var d in meta.Dependencies)
@@ -382,7 +406,10 @@ public sealed partial class ShowModuleDocumentationCommand : PSCmdlet
             ShowDuplicates = ShowDuplicates.IsPresent,
             SingleFile = File,
             TitleName = titleName,
-            TitleVersion = titleVersion
+            TitleVersion = titleVersion,
+            FormatsToProcess = formatsToProcess,
+            TypesToProcess = typesToProcess,
+            DocsPaths = docsPaths
         };
         var modeLabel = reqObj.Online ? ($"Online/{reqObj.Mode}") : "LocalOnly";
         WriteVerbose($"Planning documents (mode: {modeLabel})...");

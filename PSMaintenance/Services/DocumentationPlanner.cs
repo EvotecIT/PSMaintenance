@@ -36,6 +36,9 @@ internal sealed class DocumentationPlanner
         public string? SingleFile { get; set; }
         public string? TitleName { get; set; }
         public string? TitleVersion { get; set; }
+        public System.Collections.Generic.IEnumerable<string>? FormatsToProcess { get; set; }
+        public System.Collections.Generic.IEnumerable<string>? TypesToProcess { get; set; }
+        public System.Collections.Generic.IEnumerable<string>? DocsPaths { get; set; }
     }
 
     internal sealed class Result
@@ -143,20 +146,40 @@ internal sealed class DocumentationPlanner
                     {
                         foreach (var (Name, Path) in client.ListFiles(rp, branch))
                         {
+                            var lowerName = (Name ?? string.Empty).ToLowerInvariant();
                             var ext = System.IO.Path.GetExtension(Name)?.ToLowerInvariant();
-                            if (!(ext == ".md" || ext == ".markdown" || ext == ".txt")) continue;
                             var content = client.GetFileContent(Path, branch);
                             if (string.IsNullOrEmpty(content)) continue;
-                            // Treat repository path content as documentation pages, not standard tabs
-                            res.Items.Add(new DocumentItem {
-                                Title = Name,
-                                Kind = "DOC",
-                                Content = content!,
-                                FileName = Name,
-                                Path = Path,
-                                Source = "Remote"
-                            });
-                            anyRemote = true;
+
+                            if (lowerName.StartsWith("about_") && lowerName.EndsWith(".help.txt"))
+                            {
+                                res.Items.Add(new DocumentItem
+                                {
+                                    Title = Name ?? string.Empty,
+                                    Kind = "ABOUT",
+                                    Content = "```text\n" + content! + "\n```",
+                                    FileName = Name,
+                                    Path = Path,
+                                    Source = "Remote"
+                                });
+                                anyRemote = true;
+                                continue;
+                            }
+
+                            if (ext == ".md" || ext == ".markdown" || ext == ".txt" || ext == ".help" || ext == ".help.txt")
+                            {
+                                // Treat repository path content as documentation pages, not standard tabs
+                                res.Items.Add(new DocumentItem
+                                {
+                                    Title = Name ?? string.Empty,
+                                    Kind = "DOC",
+                                    Content = content!,
+                                    FileName = Name,
+                                    Path = Path,
+                                    Source = "Remote"
+                                });
+                                anyRemote = true;
+                            }
                         }
                     }
                 }
@@ -212,6 +235,40 @@ internal sealed class DocumentationPlanner
                 }
             }
         }
+
+        // About topics (local) – always included by default
+        try
+        {
+            var aboutFiles = _finder.ResolveAboutTopics((req.RootBase, req.InternalsBase, new DeliveryOptions()), req.DocsPaths);
+            foreach (var f in aboutFiles)
+            {
+                var title = BuildTitle(req, StripAboutExtensions(f.Name));
+                string raw;
+                try { raw = System.IO.File.ReadAllText(f.FullName); }
+                catch { continue; }
+                res.Items.Add(new DocumentItem { Title = title, Kind = "ABOUT", Path = f.FullName, FileName = f.Name, Content = AboutToMarkdown(raw), Source = "Local" });
+            }
+        }
+        catch { }
+
+        // Formats and Types (local)
+        try
+        {
+            var formats = _finder.ResolveFormatFiles((req.RootBase, req.InternalsBase, new DeliveryOptions()), req.FormatsToProcess);
+            foreach (var f in formats)
+            {
+                var content = System.IO.File.ReadAllText(f.FullName);
+                res.Items.Add(new DocumentItem { Title = BuildTitle(req, f.Name), Kind = "FORMAT", Path = f.FullName, FileName = f.Name, Content = "```xml\n" + content + "\n```", Source = "Local" });
+            }
+
+            var types = _finder.ResolveTypesFiles((req.RootBase, req.InternalsBase, new DeliveryOptions()), req.TypesToProcess);
+            foreach (var f in types)
+            {
+                var content = System.IO.File.ReadAllText(f.FullName);
+                res.Items.Add(new DocumentItem { Title = BuildTitle(req, f.Name), Kind = "TYPE", Path = f.FullName, FileName = f.Name, Content = "```xml\n" + content + "\n```", Source = "Local" });
+            }
+        }
+        catch { }
 
         // Remote standard docs (README/CHANGELOG/LICENSE)
         try
@@ -270,8 +327,13 @@ internal sealed class DocumentationPlanner
                         {
                             foreach (var item in client2.ListFiles(root, branch2))
                             {
-                                var n = item.Name;
-                                if (n.EndsWith(".md", StringComparison.OrdinalIgnoreCase) || n.EndsWith(".markdown", StringComparison.OrdinalIgnoreCase) || n.EndsWith(".txt", StringComparison.OrdinalIgnoreCase))
+                                var n = item.Name ?? string.Empty;
+                                if (n.StartsWith("about_", StringComparison.OrdinalIgnoreCase) && n.EndsWith(".help.txt", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    collected.Add(item);
+                                    continue;
+                                }
+                                if (n.EndsWith(".md", StringComparison.OrdinalIgnoreCase) || n.EndsWith(".markdown", StringComparison.OrdinalIgnoreCase) || n.EndsWith(".txt", StringComparison.OrdinalIgnoreCase) || n.EndsWith(".help", StringComparison.OrdinalIgnoreCase))
                                 {
                                     collected.Add(item);
                                 }
@@ -303,6 +365,11 @@ internal sealed class DocumentationPlanner
                             {
                                 var content = client2.GetFileContent(f.Path, branch2);
                                 if (string.IsNullOrEmpty(content)) continue;
+                                if (f.Name.StartsWith("about_", StringComparison.OrdinalIgnoreCase) && f.Name.EndsWith(".help.txt", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    res.Items.Add(new DocumentItem { Title = f.Name, Kind = "ABOUT", Content = AboutToMarkdown(content!), FileName = f.Name, Path = f.Path, Source = "Remote" });
+                                    continue;
+                                }
                                 res.Items.Add(new DocumentItem { Title = f.Name, Kind = "DOC", Content = content!, FileName = f.Name, Path = f.Path, Source = "Remote" });
                             }
                         }
@@ -434,4 +501,36 @@ internal sealed class DocumentationPlanner
 
     private static string BuildTitle(Request req, string leaf)
         => !string.IsNullOrEmpty(req.TitleName) ? $"{req.TitleName} {req.TitleVersion} - {leaf}" : leaf;
+
+    private static string StripAboutExtensions(string name)
+    {
+        var n = name;
+        if (n.EndsWith(".txt", StringComparison.OrdinalIgnoreCase)) n = n.Substring(0, n.Length - 4);
+        if (n.EndsWith(".help", StringComparison.OrdinalIgnoreCase)) n = n.Substring(0, n.Length - 5);
+        return n;
+    }
+
+    private static string AboutToMarkdown(string content)
+    {
+        if (string.IsNullOrWhiteSpace(content)) return string.Empty;
+        var lines = content.Replace("\r\n", "\n").Split('\n');
+        var sb = new System.Text.StringBuilder(content.Length + 256);
+        foreach (var line in lines)
+        {
+            var trimmed = line.Trim();
+            if (string.IsNullOrEmpty(trimmed)) { sb.AppendLine(); continue; }
+            // Uppercase headings become H3 for readability
+            bool looksHeading = trimmed.Length <= 40 && trimmed.ToUpperInvariant() == trimmed && trimmed.All(ch => !char.IsLetter(ch) || char.IsUpper(ch));
+            if (looksHeading)
+            {
+                var title = System.Globalization.CultureInfo.InvariantCulture.TextInfo.ToTitleCase(trimmed.ToLowerInvariant());
+                sb.Append("### ").Append(title).AppendLine();
+            }
+            else
+            {
+                sb.AppendLine(trimmed);
+            }
+        }
+        return sb.ToString();
+    }
 }

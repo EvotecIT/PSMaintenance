@@ -49,9 +49,12 @@ internal sealed class HtmlExporter
                     col.Card(card => {
                         card.Body(body => {
                             body.Tabs(tabs => {
-                                // Standard docs (everything except SCRIPT/DOC kinds)
+                                // Standard docs (everything except SCRIPT/DOC/ABOUT/FORMAT/TYPE kinds)
                                 var standard = list.Where(x => !string.Equals(x.Kind, "SCRIPT", System.StringComparison.OrdinalIgnoreCase)
-                                                           && !string.Equals(x.Kind, "DOC", System.StringComparison.OrdinalIgnoreCase))
+                                                           && !string.Equals(x.Kind, "DOC", System.StringComparison.OrdinalIgnoreCase)
+                                                           && !string.Equals(x.Kind, "ABOUT", System.StringComparison.OrdinalIgnoreCase)
+                                                           && !string.Equals(x.Kind, "FORMAT", System.StringComparison.OrdinalIgnoreCase)
+                                                           && !string.Equals(x.Kind, "TYPE", System.StringComparison.OrdinalIgnoreCase))
                                                    .ToList();
 
                                 // If both local and remote versions of README/CHANGELOG/LICENSE exist,
@@ -313,6 +316,56 @@ internal sealed class HtmlExporter
                 }
             });
         }
+
+                                // About topics (about_*.help.txt)
+                                var abouts = list.Where(x => string.Equals(x.Kind, "ABOUT", System.StringComparison.OrdinalIgnoreCase)).ToList();
+                                if (abouts.Count > 0)
+                                {
+                                    log?.Invoke($"Adding About tab with {abouts.Count} topics...");
+                                    tabs.AddTab("ℹ️ About", panel =>
+                                    {
+                                        panel.Tabs(inner => {
+                                            foreach (var a in abouts.OrderBy(x => x.FileName ?? x.Title, StringComparer.OrdinalIgnoreCase))
+                                            {
+                                                var name = string.IsNullOrWhiteSpace(a.FileName) ? a.Title : a.FileName;
+                                                inner.AddTab(name ?? string.Empty, p =>
+                                                {
+                                                    var md = a.Content;
+                                                    if (string.IsNullOrWhiteSpace(md) && !string.IsNullOrWhiteSpace(a.Path) && File.Exists(a.Path))
+                                                    {
+                                                        md = $"```text\n{File.ReadAllText(a.Path)}\n```";
+                                                    }
+                                                    p.Markdown(md ?? string.Empty, new MarkdownOptions { HeadingsBaseLevel = 2, AutolinkBareUrls = true, Sanitize = true, AllowRawHtmlInline = true, AllowRawHtmlBlocks = true });
+                                                });
+                                            }
+                                        });
+                                    });
+                                }
+
+                                // Formats/Types tab (ps1xml)
+                                var formats = list.Where(x => string.Equals(x.Kind, "FORMAT", System.StringComparison.OrdinalIgnoreCase) || string.Equals(x.Kind, "TYPE", System.StringComparison.OrdinalIgnoreCase)).ToList();
+                                if (formats.Count > 0)
+                                {
+                                    log?.Invoke($"Adding Formats/Types tab with {formats.Count} items...");
+                                    tabs.AddTab("📐 Formats / Types", panel =>
+                                    {
+                                        panel.Tabs(inner => {
+                                            foreach (var f in formats.OrderBy(x => x.FileName ?? x.Title, StringComparer.OrdinalIgnoreCase))
+                                            {
+                                                var name = string.IsNullOrWhiteSpace(f.FileName) ? f.Title : f.FileName;
+                                                inner.AddTab(name ?? string.Empty, p =>
+                                                {
+                                                    var md = f.Content;
+                                                    if (string.IsNullOrWhiteSpace(md) && !string.IsNullOrWhiteSpace(f.Path) && File.Exists(f.Path))
+                                                    {
+                                                        md = $"```xml\n{File.ReadAllText(f.Path)}\n```";
+                                                    }
+                                                    p.Markdown(md ?? string.Empty, new MarkdownOptions { HeadingsBaseLevel = 2, AutolinkBareUrls = true, Sanitize = true, AllowRawHtmlInline = true, AllowRawHtmlBlocks = true });
+                                                });
+                                            }
+                                        });
+                                    });
+                                }
 
                                 // Dependencies tab (if any)
                                 if (!module.SkipDependencies && module.Dependencies.Count > 0)

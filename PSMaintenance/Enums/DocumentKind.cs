@@ -13,6 +13,12 @@ public enum DocumentKind
     License,
     /// <summary>Upgrade notes (UPGRADE.md or text supplied via configuration).</summary>
     Upgrade,
+    /// <summary>About topics (about_*.help.txt).</summary>
+    About,
+    /// <summary>PowerShell formatting files (*.Format.ps1xml).</summary>
+    Format,
+    /// <summary>PowerShell type extension files (*.Types.ps1xml).</summary>
+    Types,
     /// <summary>A custom file path explicitly requested by the user.</summary>
     Custom
 }
