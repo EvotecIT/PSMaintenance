@@ -17,4 +17,6 @@ internal sealed class DocumentItem
     public string? FileName { get; set; }
     /// <summary>Optional source of the document: "Local" (Internals) or "Remote" (Repository).</summary>
     public string? Source { get; set; }
+    /// <summary>Optional base URI for resolving relative links/images when rendering.</summary>
+    public string? BaseUri { get; set; }
 }

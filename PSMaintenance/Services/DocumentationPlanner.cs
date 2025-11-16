@@ -125,14 +125,16 @@ internal sealed class DocumentationPlanner
                 bool anyRemote = false;
                 if (!string.IsNullOrEmpty(readme))
                 {
-                    var di = MakeContentItem(req, "README", readme!);
-                    di.Source = "Remote"; di.FileName = "README.md"; di.Title = "README";
+                    var baseUri = BuildRawBase(req.ProjectUri, branch);
+                    var di = MakeContentItem(req, "README", RewriteRelativeLinks(readme!, baseUri));
+                    di.Source = "Remote"; di.FileName = "README.md"; di.Title = "README"; di.BaseUri = baseUri;
                     res.Items.Add(di); anyRemote = true;
                 }
                 if (!string.IsNullOrEmpty(changelog))
                 {
-                    var di = MakeContentItem(req, "CHANGELOG", changelog!);
-                    di.Source = "Remote"; di.FileName = "CHANGELOG.md"; di.Title = "CHANGELOG";
+                    var baseUri = BuildRawBase(req.ProjectUri, branch);
+                    var di = MakeContentItem(req, "CHANGELOG", RewriteRelativeLinks(changelog!, baseUri));
+                    di.Source = "Remote"; di.FileName = "CHANGELOG.md"; di.Title = "CHANGELOG"; di.BaseUri = baseUri;
                     res.Items.Add(di); anyRemote = true;
                 }
                 if (!string.IsNullOrEmpty(license))
@@ -146,42 +148,44 @@ internal sealed class DocumentationPlanner
                 {
                     foreach (var rp in req.RepositoryPaths)
                     {
-                        foreach (var (Name, Path) in client.ListFiles(rp, branch))
-                        {
-                            var lowerName = (Name ?? string.Empty).ToLowerInvariant();
-                            var ext = System.IO.Path.GetExtension(Name)?.ToLowerInvariant();
-                            var content = client.GetFileContent(Path, branch);
-                            if (string.IsNullOrEmpty(content)) continue;
-
-                            if (lowerName.StartsWith("about_") && lowerName.EndsWith(".help.txt"))
+                            foreach (var (Name, Path) in client.ListFiles(rp, branch))
                             {
-                                res.Items.Add(new DocumentItem
-                                {
-                                    Title = Name ?? string.Empty,
-                                    Kind = "ABOUT",
-                                    Content = "```text\n" + content! + "\n```",
-                                    FileName = Name,
-                                    Path = Path,
-                                    Source = "Remote"
-                                });
-                                anyRemote = true;
-                                continue;
-                            }
+                                var lowerName = (Name ?? string.Empty).ToLowerInvariant();
+                                var ext = System.IO.Path.GetExtension(Name)?.ToLowerInvariant();
+                                var content = client.GetFileContent(Path, branch);
+                                if (string.IsNullOrEmpty(content)) continue;
 
-                            if (IsCommunityFile(lowerName))
-                            {
-                                res.Items.Add(new DocumentItem
+                                if (lowerName.StartsWith("about_") && lowerName.EndsWith(".help.txt"))
                                 {
-                                    Title = Name ?? string.Empty,
-                                    Kind = "COMMUNITY",
-                                    Content = content!,
-                                    FileName = Name,
-                                    Path = Path,
-                                    Source = "Remote"
-                                });
-                                anyRemote = true;
-                                continue;
-                            }
+                                    res.Items.Add(new DocumentItem
+                                    {
+                                        Title = Name ?? string.Empty,
+                                        Kind = "ABOUT",
+                                        Content = AboutToMarkdown(content!),
+                                        FileName = Name,
+                                        Path = Path,
+                                        Source = "Remote",
+                                        BaseUri = BuildRawBase(req.ProjectUri, branch)
+                                    });
+                                    anyRemote = true;
+                                    continue;
+                                }
+
+                                if (IsCommunityFile(lowerName))
+                                {
+                                    res.Items.Add(new DocumentItem
+                                    {
+                                        Title = Name ?? string.Empty,
+                                        Kind = "COMMUNITY",
+                                        Content = RewriteRelativeLinks(content!, BuildRawBase(req.ProjectUri, branch)),
+                                        FileName = Name,
+                                        Path = Path,
+                                        Source = "Remote",
+                                        BaseUri = BuildRawBase(req.ProjectUri, branch)
+                                    });
+                                    anyRemote = true;
+                                    continue;
+                                }
 
                             if (ext == ".md" || ext == ".markdown" || ext == ".txt" || ext == ".help" || ext == ".help.txt")
                             {
@@ -190,10 +194,11 @@ internal sealed class DocumentationPlanner
                                 {
                                     Title = Name ?? string.Empty,
                                     Kind = "DOC",
-                                    Content = content!,
+                                    Content = RewriteRelativeLinks(content!, BuildRawBase(req.ProjectUri, branch)),
                                     FileName = Name,
                                     Path = Path,
-                                    Source = "Remote"
+                                    Source = "Remote",
+                                    BaseUri = BuildRawBase(req.ProjectUri, branch)
                                 });
                                 anyRemote = true;
                             }
@@ -320,12 +325,12 @@ internal sealed class DocumentationPlanner
                     if (forceRemoteStandard || !hasReadme)
                     {
                         var readme = TryFetchFirst(client, branch, new[] { "README.md", "README.MD", "Readme.md" });
-                        if (!string.IsNullOrEmpty(readme)) { var di = MakeContentItem(req, "README", readme!); di.Source = "Remote"; di.FileName = "README.md"; di.Title = "README"; res.Items.Add(di); }
+                        if (!string.IsNullOrEmpty(readme)) { var di = MakeContentItem(req, "README", RewriteRelativeLinks(readme!, BuildRawBase(req.ProjectUri, branch))); di.Source = "Remote"; di.FileName = "README.md"; di.Title = "README"; res.Items.Add(di); }
                     }
                     if (forceRemoteStandard || !hasChlog)
                     {
                         var ch = TryFetchFirst(client, branch, new[] { "CHANGELOG.md", "CHANGELOG.MD", "Changelog.md" });
-                        if (!string.IsNullOrEmpty(ch)) { var di = MakeContentItem(req, "CHANGELOG", ch!); di.Source = "Remote"; di.FileName = "CHANGELOG.md"; di.Title = "CHANGELOG"; res.Items.Add(di); }
+                        if (!string.IsNullOrEmpty(ch)) { var di = MakeContentItem(req, "CHANGELOG", RewriteRelativeLinks(ch!, BuildRawBase(req.ProjectUri, branch))); di.Source = "Remote"; di.FileName = "CHANGELOG.md"; di.Title = "CHANGELOG"; res.Items.Add(di); }
                     }
                     if (forceRemoteStandard || !hasLic)
                     {
@@ -394,18 +399,18 @@ internal sealed class DocumentationPlanner
                             {
                                 var content = client2.GetFileContent(f.Path, branch2);
                                 if (string.IsNullOrEmpty(content)) continue;
-                        if (f.Name.StartsWith("about_", StringComparison.OrdinalIgnoreCase) && f.Name.EndsWith(".help.txt", StringComparison.OrdinalIgnoreCase))
-                        {
-                            res.Items.Add(new DocumentItem { Title = f.Name, Kind = "ABOUT", Content = AboutToMarkdown(content!), FileName = f.Name, Path = f.Path, Source = "Remote" });
-                            continue;
-                        }
-                        if (IsCommunityFile(f.Name))
-                        {
-                            res.Items.Add(new DocumentItem { Title = f.Name, Kind = "COMMUNITY", Content = content!, FileName = f.Name, Path = f.Path, Source = "Remote" });
-                            continue;
-                        }
-                        res.Items.Add(new DocumentItem { Title = f.Name, Kind = "DOC", Content = content!, FileName = f.Name, Path = f.Path, Source = "Remote" });
-                    }
+                                if (f.Name.StartsWith("about_", StringComparison.OrdinalIgnoreCase) && f.Name.EndsWith(".help.txt", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    res.Items.Add(new DocumentItem { Title = f.Name, Kind = "ABOUT", Content = AboutToMarkdown(content!), FileName = f.Name, Path = f.Path, Source = "Remote", BaseUri = BuildRawBase(req.ProjectUri, branch2) });
+                                    continue;
+                                }
+                                if (IsCommunityFile(f.Name))
+                                {
+                                    res.Items.Add(new DocumentItem { Title = f.Name, Kind = "COMMUNITY", Content = RewriteRelativeLinks(content!, BuildRawBase(req.ProjectUri, branch2)), FileName = f.Name, Path = f.Path, Source = "Remote", BaseUri = BuildRawBase(req.ProjectUri, branch2) });
+                                    continue;
+                                }
+                                res.Items.Add(new DocumentItem { Title = f.Name, Kind = "DOC", Content = RewriteRelativeLinks(content!, BuildRawBase(req.ProjectUri, branch2)), FileName = f.Name, Path = f.Path, Source = "Remote", BaseUri = BuildRawBase(req.ProjectUri, branch2) });
+                            }
                         }
                     }
                 }
@@ -536,35 +541,41 @@ internal sealed class DocumentationPlanner
             {
                 try
                 {
-                    var info = RepoUrlParser.Parse(req.ProjectUri!);
-                    var token = ResolveToken(req.RepositoryToken);
-                    if (string.IsNullOrEmpty(token)) token = TokenStore.GetToken(info.Host) ?? string.Empty;
-                    var client = RepoClientFactory.Create(info, token);
-                    var rels = client?.ListReleases() ?? new List<RepoRelease>();
+                    if (!string.IsNullOrWhiteSpace(req.ProjectUri)) {
+                        var info = RepoUrlParser.Parse(req.ProjectUri!);
+                        var token = ResolveToken(req.RepositoryToken);
+                        if (string.IsNullOrEmpty(token)) token = TokenStore.GetToken(info.Host) ?? string.Empty;
+                        var client = RepoClientFactory.Create(info, token);
+                        var rels = client?.ListReleases() ?? new List<RepoRelease>();
                     if (rels.Count > 0)
                     {
                         var sb = new System.Text.StringBuilder();
-                        sb.AppendLine("# Releases (repository API)");
-                        foreach (var r in rels)
-                        {
-                            sb.Append("## ").Append(string.IsNullOrEmpty(r.Name) ? r.Tag : r.Name);
-                            if (r.PublishedAt.HasValue) sb.Append(" (" + r.PublishedAt.Value.ToString("yyyy-MM-dd") + ")");
-                            sb.AppendLine();
-                            if (!string.IsNullOrWhiteSpace(r.Body)) sb.AppendLine(r.Body.Trim()).AppendLine();
-                            if (r.Assets.Count > 0)
+                            sb.AppendLine("# Releases (repository API)");
+                            foreach (var r in rels)
                             {
-                                sb.AppendLine("### Assets");
-                                foreach (var a in r.Assets)
+                                sb.Append("## ").Append(string.IsNullOrEmpty(r.Name) ? r.Tag : r.Name);
+                                if (r.PublishedAt.HasValue) sb.Append(" (" + r.PublishedAt.Value.ToString("yyyy-MM-dd") + ")");
+                                sb.AppendLine();
+                                if (!string.IsNullOrWhiteSpace(r.Body))
                                 {
-                                    sb.Append("- ").Append(a.Name);
-                                    if (a.Size.HasValue) sb.Append($" ({a.Size.Value / 1024} KB)");
-                                    if (!string.IsNullOrEmpty(a.DownloadUrl)) sb.Append($" — {a.DownloadUrl}");
+                                    var baseUri = BuildRawBase(req.ProjectUri, r.Tag);
+                                    sb.AppendLine(RewriteRelativeLinks(r.Body.Trim(), baseUri)).AppendLine();
+                                }
+                                if (r.Assets.Count > 0)
+                                {
+                                    sb.AppendLine("### Assets");
+                                    foreach (var a in r.Assets)
+                                    {
+                                        sb.Append("- [").Append(a.Name).Append("](").Append(a.DownloadUrl).Append(")");
+                                        if (a.Size.HasValue) sb.Append($" ({a.Size.Value / 1024} KB)");
+                                        if (!string.IsNullOrEmpty(a.ContentType)) sb.Append($" {a.ContentType}");
+                                        sb.AppendLine();
+                                    }
                                     sb.AppendLine();
                                 }
-                                sb.AppendLine();
                             }
+                            res.Items.Add(new DocumentItem { Title = BuildTitle(req, "Releases"), Kind = "RELEASES", Content = sb.ToString(), Source = "Remote", BaseUri = BuildRawBase(req.ProjectUri, rels.FirstOrDefault()?.Tag) });
                         }
-                        res.Items.Add(new DocumentItem { Title = BuildTitle(req, "Releases"), Kind = "RELEASES", Content = sb.ToString(), Source = "Remote" });
                     }
                 }
                 catch { }
@@ -674,5 +685,43 @@ internal sealed class DocumentationPlanner
             sb.Append("- ").Append(r.Version).AppendLine();
         }
         return sb.ToString();
+    }
+
+    private static string? BuildRawBase(string? projectUri, string? refName)
+    {
+        if (string.IsNullOrWhiteSpace(projectUri)) return null;
+        try
+        {
+            var info = RepoUrlParser.Parse(projectUri);
+            if (info.Host == RepoHost.GitHub && !string.IsNullOrEmpty(info.Owner) && !string.IsNullOrEmpty(info.Repo))
+            {
+                var branch = string.IsNullOrWhiteSpace(refName) ? "main" : refName.Trim();
+                return $"https://raw.githubusercontent.com/{info.Owner}/{info.Repo}/{branch}/";
+            }
+        }
+        catch { }
+        return null;
+    }
+
+    private static string RewriteRelativeLinks(string markdown, string? baseUri)
+    {
+        if (string.IsNullOrWhiteSpace(markdown) || string.IsNullOrWhiteSpace(baseUri)) return markdown ?? string.Empty;
+        string repl(Match m)
+        {
+            var url = m.Groups[2].Value;
+            if (string.IsNullOrWhiteSpace(url)) return m.Value;
+            if (url.StartsWith("http://", StringComparison.OrdinalIgnoreCase) || url.StartsWith("https://", StringComparison.OrdinalIgnoreCase)) return m.Value;
+            if (url.StartsWith("//") || url.StartsWith("#") || url.StartsWith("mailto:") || url.StartsWith("data:")) return m.Value;
+            try
+            {
+                var abs = new Uri(new Uri(baseUri!, UriKind.Absolute), url).ToString();
+                return m.Groups[1].Value + abs + m.Groups[3].Value;
+            }
+            catch { return m.Value; }
+        }
+
+        // Matches [text](url) and ![alt](url)
+        var pattern = @"(!?\[[^\]]*\]\()([^\)]+)(\))";
+        return Regex.Replace(markdown, pattern, new MatchEvaluator(repl));
     }
 }

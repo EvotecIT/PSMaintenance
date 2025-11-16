@@ -214,6 +214,7 @@ internal sealed class HtmlExporter
                                             AllowRelativeLinks = true,
                                             AllowRawHtmlInline = true,
                                             AllowRawHtmlBlocks = true,
+                                            BaseUri = it.BaseUri,
                                             DataTables = new MarkdownDataTablesOptions {
                                                 Responsive = true,
                                                 // Start in Responsive; ToggleView button lets users switch to ScrollX
@@ -278,7 +279,7 @@ internal sealed class HtmlExporter
                                 inner.AddTab(name ?? string.Empty, pp =>
                                 {
                                     var md = d.Content ?? string.Empty;
-                                    var options = new MarkdownOptions { HeadingsBaseLevel = 2, AutolinkBareUrls = true, Sanitize = true, AllowRawHtmlInline = true, AllowRawHtmlBlocks = true, TableMode = MarkdownTableMode.DataTables, DataTables = new MarkdownDataTablesOptions { Responsive = true, Export = true, ExportFormats = new[] { DataTablesExportFormat.Excel, DataTablesExportFormat.CSV, DataTablesExportFormat.Copy }, StateSave = true } };
+                                    var options = new MarkdownOptions { HeadingsBaseLevel = 2, AutolinkBareUrls = true, Sanitize = true, AllowRawHtmlInline = true, AllowRawHtmlBlocks = true, AllowRelativeLinks = true, BaseUri = d.BaseUri, TableMode = MarkdownTableMode.DataTables, DataTables = new MarkdownDataTablesOptions { Responsive = true, Export = true, ExportFormats = new[] { DataTablesExportFormat.Excel, DataTablesExportFormat.CSV, DataTablesExportFormat.Copy }, StateSave = true } };
                                     pp.Markdown(md, options);
                                 });
                             }
@@ -293,7 +294,7 @@ internal sealed class HtmlExporter
                                 inner.AddTab(name ?? string.Empty, pp =>
                                 {
                                     var md = d.Content ?? string.Empty;
-                                    var options = new MarkdownOptions { HeadingsBaseLevel = 2, AutolinkBareUrls = true, Sanitize = true, AllowRawHtmlInline = true, AllowRawHtmlBlocks = true, TableMode = MarkdownTableMode.DataTables, DataTables = new MarkdownDataTablesOptions { Responsive = true, Export = true, ExportFormats = new[] { DataTablesExportFormat.Excel, DataTablesExportFormat.CSV, DataTablesExportFormat.Copy }, StateSave = true } };
+                                    var options = new MarkdownOptions { HeadingsBaseLevel = 2, AutolinkBareUrls = true, Sanitize = true, AllowRawHtmlInline = true, AllowRawHtmlBlocks = true, AllowRelativeLinks = true, BaseUri = d.BaseUri, TableMode = MarkdownTableMode.DataTables, DataTables = new MarkdownDataTablesOptions { Responsive = true, Export = true, ExportFormats = new[] { DataTablesExportFormat.Excel, DataTablesExportFormat.CSV, DataTablesExportFormat.Copy }, StateSave = true } };
                                     pp.Markdown(md, options);
                                 });
                             }
@@ -311,7 +312,7 @@ internal sealed class HtmlExporter
                         inner.AddTab(name ?? string.Empty, pp =>
                         {
                             var md = d.Content ?? string.Empty;
-                            var options = new MarkdownOptions { HeadingsBaseLevel = 2, AutolinkBareUrls = true, Sanitize = true, AllowRawHtmlInline = true, AllowRawHtmlBlocks = true, TableMode = MarkdownTableMode.DataTables, DataTables = new MarkdownDataTablesOptions { Responsive = true, Export = true, ExportFormats = new[] { DataTablesExportFormat.Excel, DataTablesExportFormat.CSV, DataTablesExportFormat.Copy }, StateSave = true } };
+                            var options = new MarkdownOptions { HeadingsBaseLevel = 2, AutolinkBareUrls = true, Sanitize = true, AllowRawHtmlInline = true, AllowRawHtmlBlocks = true, AllowRelativeLinks = true, BaseUri = d.BaseUri, TableMode = MarkdownTableMode.DataTables, DataTables = new MarkdownDataTablesOptions { Responsive = true, Export = true, ExportFormats = new[] { DataTablesExportFormat.Excel, DataTablesExportFormat.CSV, DataTablesExportFormat.Copy }, StateSave = true } };
                             pp.Markdown(md, options);
                         });
                     }
