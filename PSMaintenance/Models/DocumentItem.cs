@@ -7,8 +7,8 @@ internal sealed class DocumentItem
 {
     /// <summary>Display title used in console/HTML renderers.</summary>
     public string Title { get; set; } = string.Empty;
-    /// <summary>Logical kind: FILE, INTRO, UPGRADE or LINKS.</summary>
-    public string Kind { get; set; } = "FILE"; // FILE, INTRO, UPGRADE, LINKS
+    /// <summary>Logical kind: FILE, INTRO, UPGRADE, LINKS, ABOUT, FORMAT, TYPE, SCRIPT, DOC, COMMUNITY, RELEASES.</summary>
+    public string Kind { get; set; } = "FILE"; // FILE, INTRO, UPGRADE, LINKS, ABOUT, FORMAT, TYPE, SCRIPT, DOC, COMMUNITY, RELEASES
     /// <summary>Markdown content.</summary>
     public string Content { get; set; } = string.Empty; // markdown content
     /// <summary>Optional local file path when the item represents a file on disk.</summary>
@@ -17,4 +17,6 @@ internal sealed class DocumentItem
     public string? FileName { get; set; }
     /// <summary>Optional source of the document: "Local" (Internals) or "Remote" (Repository).</summary>
     public string? Source { get; set; }
+    /// <summary>Optional base URI for resolving relative links/images when rendering.</summary>
+    public string? BaseUri { get; set; }
 }

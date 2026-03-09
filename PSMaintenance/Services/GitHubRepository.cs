@@ -109,4 +109,47 @@ internal sealed class GitHubRepository : IRepoClient
         catch { }
         return result;
     }
+
+    /// <summary>
+    /// Lists GitHub releases (tag, name, body, published, assets).
+    /// </summary>
+    public List<RepoRelease> ListReleases()
+    {
+        var result = new List<RepoRelease>();
+        try
+        {
+            using var c = CreateClient();
+            var url = $"https://api.github.com/repos/{_owner}/{_repo}/releases";
+            var resp = c.GetAsync(url).GetAwaiter().GetResult();
+            if (!resp.IsSuccessStatusCode) return result;
+            var json = resp.Content.ReadAsStringAsync().GetAwaiter().GetResult();
+            using var doc = JsonDocument.Parse(json);
+            if (doc.RootElement.ValueKind != JsonValueKind.Array) return result;
+            foreach (var rel in doc.RootElement.EnumerateArray())
+            {
+                var r = new RepoRelease();
+                r.Tag = rel.TryGetProperty("tag_name", out var tag) ? tag.GetString() ?? string.Empty : string.Empty;
+                r.Name = rel.TryGetProperty("name", out var name) ? name.GetString() ?? r.Tag : r.Tag;
+                r.Body = rel.TryGetProperty("body", out var body) ? (body.GetString() ?? string.Empty) : string.Empty;
+                if (rel.TryGetProperty("published_at", out var pub) && pub.ValueKind == JsonValueKind.String && DateTimeOffset.TryParse(pub.GetString(), out var dto)) r.PublishedAt = dto;
+                if (rel.TryGetProperty("assets", out var assetsEl) && assetsEl.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var a in assetsEl.EnumerateArray())
+                    {
+                        var asset = new RepoReleaseAsset
+                        {
+                            Name = a.TryGetProperty("name", out var an) ? an.GetString() ?? string.Empty : string.Empty,
+                            DownloadUrl = a.TryGetProperty("browser_download_url", out var dl) ? dl.GetString() ?? string.Empty : string.Empty,
+                            ContentType = a.TryGetProperty("content_type", out var ct) ? ct.GetString() : null,
+                            Size = a.TryGetProperty("size", out var sz) ? sz.GetInt64() : (long?)null
+                        };
+                        r.Assets.Add(asset);
+                    }
+                }
+                result.Add(r);
+            }
+        }
+        catch { }
+        return result;
+    }
 }

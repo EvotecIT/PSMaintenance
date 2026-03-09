@@ -49,9 +49,14 @@ internal sealed class HtmlExporter
                     col.Card(card => {
                         card.Body(body => {
                             body.Tabs(tabs => {
-                                // Standard docs (everything except SCRIPT/DOC kinds)
+                                // Standard docs (everything except SCRIPT/DOC/ABOUT/FORMAT/TYPE/COMMUNITY/RELEASES kinds)
                                 var standard = list.Where(x => !string.Equals(x.Kind, "SCRIPT", System.StringComparison.OrdinalIgnoreCase)
-                                                           && !string.Equals(x.Kind, "DOC", System.StringComparison.OrdinalIgnoreCase))
+                                                           && !string.Equals(x.Kind, "DOC", System.StringComparison.OrdinalIgnoreCase)
+                                                           && !string.Equals(x.Kind, "ABOUT", System.StringComparison.OrdinalIgnoreCase)
+                                                           && !string.Equals(x.Kind, "FORMAT", System.StringComparison.OrdinalIgnoreCase)
+                                                           && !string.Equals(x.Kind, "TYPE", System.StringComparison.OrdinalIgnoreCase)
+                                                           && !string.Equals(x.Kind, "COMMUNITY", System.StringComparison.OrdinalIgnoreCase)
+                                                           && !string.Equals(x.Kind, "RELEASES", System.StringComparison.OrdinalIgnoreCase))
                                                    .ToList();
 
                                 // If both local and remote versions of README/CHANGELOG/LICENSE exist,
@@ -209,6 +214,7 @@ internal sealed class HtmlExporter
                                             AllowRelativeLinks = true,
                                             AllowRawHtmlInline = true,
                                             AllowRawHtmlBlocks = true,
+                                            BaseUri = it.BaseUri,
                                             DataTables = new MarkdownDataTablesOptions {
                                                 Responsive = true,
                                                 // Start in Responsive; ToggleView button lets users switch to ScrollX
@@ -273,7 +279,7 @@ internal sealed class HtmlExporter
                                 inner.AddTab(name ?? string.Empty, pp =>
                                 {
                                     var md = d.Content ?? string.Empty;
-                                    var options = new MarkdownOptions { HeadingsBaseLevel = 2, AutolinkBareUrls = true, Sanitize = true, AllowRawHtmlInline = true, AllowRawHtmlBlocks = true, TableMode = MarkdownTableMode.DataTables, DataTables = new MarkdownDataTablesOptions { Responsive = true, Export = true, ExportFormats = new[] { DataTablesExportFormat.Excel, DataTablesExportFormat.CSV, DataTablesExportFormat.Copy }, StateSave = true } };
+                                    var options = new MarkdownOptions { HeadingsBaseLevel = 2, AutolinkBareUrls = true, Sanitize = true, AllowRawHtmlInline = true, AllowRawHtmlBlocks = true, AllowRelativeLinks = true, BaseUri = d.BaseUri, TableMode = MarkdownTableMode.DataTables, DataTables = new MarkdownDataTablesOptions { Responsive = true, Export = true, ExportFormats = new[] { DataTablesExportFormat.Excel, DataTablesExportFormat.CSV, DataTablesExportFormat.Copy }, StateSave = true } };
                                     pp.Markdown(md, options);
                                 });
                             }
@@ -288,7 +294,7 @@ internal sealed class HtmlExporter
                                 inner.AddTab(name ?? string.Empty, pp =>
                                 {
                                     var md = d.Content ?? string.Empty;
-                                    var options = new MarkdownOptions { HeadingsBaseLevel = 2, AutolinkBareUrls = true, Sanitize = true, AllowRawHtmlInline = true, AllowRawHtmlBlocks = true, TableMode = MarkdownTableMode.DataTables, DataTables = new MarkdownDataTablesOptions { Responsive = true, Export = true, ExportFormats = new[] { DataTablesExportFormat.Excel, DataTablesExportFormat.CSV, DataTablesExportFormat.Copy }, StateSave = true } };
+                                    var options = new MarkdownOptions { HeadingsBaseLevel = 2, AutolinkBareUrls = true, Sanitize = true, AllowRawHtmlInline = true, AllowRawHtmlBlocks = true, AllowRelativeLinks = true, BaseUri = d.BaseUri, TableMode = MarkdownTableMode.DataTables, DataTables = new MarkdownDataTablesOptions { Responsive = true, Export = true, ExportFormats = new[] { DataTablesExportFormat.Excel, DataTablesExportFormat.CSV, DataTablesExportFormat.Copy }, StateSave = true } };
                                     pp.Markdown(md, options);
                                 });
                             }
@@ -306,13 +312,100 @@ internal sealed class HtmlExporter
                         inner.AddTab(name ?? string.Empty, pp =>
                         {
                             var md = d.Content ?? string.Empty;
-                            var options = new MarkdownOptions { HeadingsBaseLevel = 2, AutolinkBareUrls = true, Sanitize = true, AllowRawHtmlInline = true, AllowRawHtmlBlocks = true, TableMode = MarkdownTableMode.DataTables, DataTables = new MarkdownDataTablesOptions { Responsive = true, Export = true, ExportFormats = new[] { DataTablesExportFormat.Excel, DataTablesExportFormat.CSV, DataTablesExportFormat.Copy }, StateSave = true } };
+                            var options = new MarkdownOptions { HeadingsBaseLevel = 2, AutolinkBareUrls = true, Sanitize = true, AllowRawHtmlInline = true, AllowRawHtmlBlocks = true, AllowRelativeLinks = true, BaseUri = d.BaseUri, TableMode = MarkdownTableMode.DataTables, DataTables = new MarkdownDataTablesOptions { Responsive = true, Export = true, ExportFormats = new[] { DataTablesExportFormat.Excel, DataTablesExportFormat.CSV, DataTablesExportFormat.Copy }, StateSave = true } };
                             pp.Markdown(md, options);
                         });
                     }
                 }
             });
         }
+
+                                // About topics (about_*.help.txt)
+                                var abouts = list.Where(x => string.Equals(x.Kind, "ABOUT", System.StringComparison.OrdinalIgnoreCase)).ToList();
+                                if (abouts.Count > 0)
+                                {
+                                    log?.Invoke($"Adding About tab with {abouts.Count} topics...");
+                                    tabs.AddTab("ℹ️ About", panel =>
+                                    {
+                                        panel.Tabs(inner => {
+                                            foreach (var a in abouts.OrderBy(x => x.FileName ?? x.Title, StringComparer.OrdinalIgnoreCase))
+                                            {
+                                                var name = string.IsNullOrWhiteSpace(a.FileName) ? a.Title : a.FileName;
+                                                inner.AddTab(name ?? string.Empty, p =>
+                                                {
+                                                    var md = a.Content;
+                                                    if (string.IsNullOrWhiteSpace(md) && !string.IsNullOrWhiteSpace(a.Path) && File.Exists(a.Path))
+                                                    {
+                                                        md = $"```text\n{File.ReadAllText(a.Path)}\n```";
+                                                    }
+                                                    p.Markdown(md ?? string.Empty, new MarkdownOptions { HeadingsBaseLevel = 2, AutolinkBareUrls = true, Sanitize = true, AllowRawHtmlInline = true, AllowRawHtmlBlocks = true });
+                                                });
+                                            }
+                                        });
+                                    });
+                                }
+
+                                // Formats/Types tab (ps1xml)
+                                var formats = list.Where(x => string.Equals(x.Kind, "FORMAT", System.StringComparison.OrdinalIgnoreCase) || string.Equals(x.Kind, "TYPE", System.StringComparison.OrdinalIgnoreCase)).ToList();
+                                if (formats.Count > 0)
+                                {
+                                    log?.Invoke($"Adding Formats/Types tab with {formats.Count} items...");
+                                    tabs.AddTab("📐 Formats / Types", panel =>
+                                    {
+                                        panel.Tabs(inner => {
+                                            foreach (var f in formats.OrderBy(x => x.FileName ?? x.Title, StringComparer.OrdinalIgnoreCase))
+                                            {
+                                                var name = string.IsNullOrWhiteSpace(f.FileName) ? f.Title : f.FileName;
+                                                inner.AddTab(name ?? string.Empty, p =>
+                                                {
+                                                    var md = f.Content;
+                                                    if (string.IsNullOrWhiteSpace(md) && !string.IsNullOrWhiteSpace(f.Path) && File.Exists(f.Path))
+                                                    {
+                                                        md = $"```xml\n{File.ReadAllText(f.Path)}\n```";
+                                                    }
+                                                    p.Markdown(md ?? string.Empty, new MarkdownOptions { HeadingsBaseLevel = 2, AutolinkBareUrls = true, Sanitize = true, AllowRawHtmlInline = true, AllowRawHtmlBlocks = true });
+                                                });
+                                            }
+                                        });
+                                    });
+                                }
+
+                                // Community health files (CONTRIBUTING/SECURITY/SUPPORT/CODE_OF_CONDUCT)
+                                var community = list.Where(x => string.Equals(x.Kind, "COMMUNITY", System.StringComparison.OrdinalIgnoreCase)).ToList();
+                                if (community.Count > 0)
+                                {
+                                    log?.Invoke($"Adding Community tab with {community.Count} items...");
+                                    tabs.AddTab("👥 Community", panel =>
+                                    {
+                                        panel.Tabs(inner => {
+                                            foreach (var c in community.OrderBy(x => x.FileName ?? x.Title, StringComparer.OrdinalIgnoreCase))
+                                            {
+                                                var name = string.IsNullOrWhiteSpace(c.FileName) ? c.Title : c.FileName;
+                                                inner.AddTab(name ?? string.Empty, p =>
+                                                {
+                                                    var md = c.Content;
+                                                    if (string.IsNullOrWhiteSpace(md) && !string.IsNullOrWhiteSpace(c.Path) && File.Exists(c.Path))
+                                                    {
+                                                        md = File.ReadAllText(c.Path);
+                                                    }
+                                                    p.Markdown(md ?? string.Empty, new MarkdownOptions { HeadingsBaseLevel = 2, AutolinkBareUrls = true, Sanitize = true, AllowRawHtmlInline = true, AllowRawHtmlBlocks = true });
+                                                });
+                                            }
+                                        });
+                                    });
+                                }
+
+                                // Releases summary
+                                var releases = list.Where(x => string.Equals(x.Kind, "RELEASES", System.StringComparison.OrdinalIgnoreCase)).ToList();
+                                if (releases.Count > 0)
+                                {
+                                    log?.Invoke("Adding Releases tab...");
+                                    var rel = releases.Last();
+                                    tabs.AddTab("📦 Releases", panel =>
+                                    {
+                                        panel.Markdown(rel.Content ?? string.Empty, new MarkdownOptions { HeadingsBaseLevel = 2, AutolinkBareUrls = true, Sanitize = true, AllowRawHtmlInline = true, AllowRawHtmlBlocks = true });
+                                    });
+                                }
 
                                 // Dependencies tab (if any)
                                 if (!module.SkipDependencies && module.Dependencies.Count > 0)
