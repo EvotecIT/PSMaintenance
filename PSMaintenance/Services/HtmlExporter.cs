@@ -21,6 +21,12 @@ internal sealed class HtmlExporter
 
         // Build document page per HtmlForgeX examples
         var doc = new Document { ThemeMode = ThemeMode.System, LibraryMode = LibraryMode.Online };
+        // Route all Markdown(...) calls through the OfficeIMO-backed provider for consistent GFM-style parsing.
+        doc.Settings(settings => settings.UseOfficeImo(options =>
+        {
+            options.PrismTheme = PrismJsTheme.GitHub;
+            options.UseTablerAlertsForCallouts = true;
+        }).End());
         doc.Body.Page(page => {
             page.Layout = TablerLayout.Fluid;
 

@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
-using System.Management.Automation;
 
 namespace PSMaintenance;
 
@@ -19,7 +18,7 @@ internal sealed class DocumentationPlanner
     {
         public string RootBase { get; set; } = string.Empty;
         public string? InternalsBase { get; set; }
-        public PSObject? Delivery { get; set; }
+        public object? Delivery { get; set; }
         public string? ProjectUri { get; set; }
         public string? RepositoryBranch { get; set; }
         public string? RepositoryToken { get; set; }
@@ -93,8 +92,8 @@ internal sealed class DocumentationPlanner
             AddKind(items, req, DocumentKind.License);
             AddKind(items, req, DocumentKind.Upgrade);
             // Add intro when IntroText/IntroFile present
-            var introLines = req.Delivery?.Properties["IntroText"]?.Value as System.Collections.IEnumerable;
-            var introFile = req.Delivery?.Properties["IntroFile"]?.Value as string;
+            var introLines = GetDeliveryValue(req.Delivery, "IntroText") as System.Collections.IEnumerable;
+            var introFile = GetDeliveryValue(req.Delivery, "IntroFile") as string;
             if (introLines != null || !string.IsNullOrEmpty(introFile)) items.Add(("INTRO", string.Empty));
         }
 
@@ -222,8 +221,8 @@ internal sealed class DocumentationPlanner
             }
             if (it.Kind == "INTRO")
             {
-                var introLines = req.Delivery?.Properties["IntroText"]?.Value as System.Collections.IEnumerable;
-                var introFile = req.Delivery?.Properties["IntroFile"]?.Value as string;
+                var introLines = GetDeliveryValue(req.Delivery, "IntroText") as System.Collections.IEnumerable;
+                var introFile = GetDeliveryValue(req.Delivery, "IntroFile") as string;
                 string content = string.Empty;
                 if (introLines != null)
                 {
@@ -241,7 +240,7 @@ internal sealed class DocumentationPlanner
             if (it.Kind == "UPGRADE")
             {
                 // Prefer UpgradeText from delivery, else resolve file
-                var upLines = req.Delivery?.Properties["UpgradeText"]?.Value as System.Collections.IEnumerable;
+                var upLines = GetDeliveryValue(req.Delivery, "UpgradeText") as System.Collections.IEnumerable;
                 if (upLines != null)
                 {
                     var content = string.Join("\n", upLines.Cast<object>().Select(o => o?.ToString() ?? string.Empty));
@@ -376,7 +375,7 @@ internal sealed class DocumentationPlanner
                         if (collected.Count > 0)
                         {
                             // Apply DocumentationOrder if provided
-                            var orderArr = req.Delivery?.Properties["DocumentationOrder"]?.Value as System.Collections.IEnumerable;
+                            var orderArr = GetDeliveryValue(req.Delivery, "DocumentationOrder") as System.Collections.IEnumerable;
                             var order = new List<string>();
                             if (orderArr != null)
                             {
@@ -457,7 +456,7 @@ internal sealed class DocumentationPlanner
                                             .Concat(Directory.GetFiles(docsRoot, "*.markdown", SearchOption.TopDirectoryOnly))
                                             .ToList();
                     // Optional ordering from delivery metadata
-                    var orderArr = req.Delivery?.Properties["DocumentationOrder"]?.Value as System.Collections.IEnumerable;
+                    var orderArr = GetDeliveryValue(req.Delivery, "DocumentationOrder") as System.Collections.IEnumerable;
                     var order = new List<string>();
                     if (orderArr != null)
                     {
@@ -487,16 +486,15 @@ internal sealed class DocumentationPlanner
         catch { /* ignore docs discovery errors */ }
 
         // Links
-        var links = req.Delivery?.Properties["ImportantLinks"]?.Value as System.Collections.IEnumerable;
+        var links = GetDeliveryValue(req.Delivery, "ImportantLinks") as System.Collections.IEnumerable;
         if (links != null)
         {
             var md = new System.Text.StringBuilder();
             md.AppendLine("# Links");
             foreach (var l in links)
             {
-                var p = l as PSObject; if (p == null) continue;
-                var t = p.Properties["Title"]?.Value?.ToString() ?? p.Properties["Name"]?.Value?.ToString();
-                var u = p.Properties["Url"]?.Value?.ToString();
+                var t = GetDeliveryValue(l, "Title")?.ToString() ?? GetDeliveryValue(l, "Name")?.ToString();
+                var u = GetDeliveryValue(l, "Url")?.ToString();
                 if (string.IsNullOrEmpty(u)) continue;
                 if (!string.IsNullOrEmpty(t)) md.Append("- [").Append(t).Append("](").Append(u).AppendLine(")");
                 else md.Append("- ").AppendLine(u);
@@ -618,7 +616,6 @@ internal sealed class DocumentationPlanner
 
     private static string BuildTitle(Request req, string leaf)
         => !string.IsNullOrEmpty(req.TitleName) ? $"{req.TitleName} {req.TitleVersion} - {leaf}" : leaf;
-
     private static string StripAboutExtensions(string name)
     {
         var n = name;
@@ -723,5 +720,39 @@ internal sealed class DocumentationPlanner
         // Matches [text](url) and ![alt](url)
         var pattern = @"(!?\[[^\]]*\]\()([^\)]+)(\))";
         return Regex.Replace(markdown, pattern, new MatchEvaluator(repl));
+    }
+
+    private static object? GetDeliveryValue(object? delivery, string name)
+    {
+        if (delivery == null || string.IsNullOrWhiteSpace(name))
+        {
+            return null;
+        }
+
+        if (delivery is System.Collections.IDictionary dictionary)
+        {
+            return dictionary.Contains(name) ? dictionary[name] : null;
+        }
+
+        var type = delivery.GetType();
+        var directProperty = type.GetProperty(name);
+        if (directProperty != null)
+        {
+            return directProperty.GetValue(delivery);
+        }
+
+        var propertiesProperty = type.GetProperty("Properties");
+        var properties = propertiesProperty?.GetValue(delivery);
+        if (properties != null)
+        {
+            var indexer = properties.GetType().GetProperty("Item", new[] { typeof(string) });
+            var property = indexer?.GetValue(properties, new object[] { name });
+            if (property != null)
+            {
+                return property.GetType().GetProperty("Value")?.GetValue(property);
+            }
+        }
+
+        return null;
     }
 }
