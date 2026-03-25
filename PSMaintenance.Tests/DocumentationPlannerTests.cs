@@ -23,7 +23,7 @@ public class DocumentationPlannerTests
     public void DefaultSelection_Includes_Readme_Changelog_License()
     {
         var root = CreateTempModule(out var internals);
-        var finder = new DocumentationFinder(new DummyCmdlet());
+        var finder = new DocumentationFinder();
         var planner = new DocumentationPlanner(finder);
 
         var req = new DocumentationPlanner.Request
@@ -40,7 +40,4 @@ public class DocumentationPlannerTests
         Assert.Contains(res.Items, i => i.Title.Contains("Changelog", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(res.Items, i => i.Title.Contains("License", StringComparison.OrdinalIgnoreCase));
     }
-
-    private sealed class DummyCmdlet : System.Management.Automation.PSCmdlet { }
 }
-

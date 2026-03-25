@@ -59,10 +59,9 @@
     </Target>
 
     <ItemGroup>
-        <ProjectReference
-            Include="..\Module\Ignore\OfficeIMO\OfficeIMO.Markdown\OfficeIMO.Markdown.csproj" />
-        <ProjectReference
-            Include="..\Module\Ignore\HtmlForgeX\HtmlForgeX\HtmlForgeX.csproj" />
+        <ProjectReference Include="..\..\HtmlForgeX\HtmlForgeX\HtmlForgeX.csproj" />
+        <ProjectReference Include="..\..\HtmlForgeX\HtmlForgeX.Markdown\HtmlForgeX.Markdown.csproj" />
+        <ProjectReference Include="..\..\OfficeIMO\OfficeIMO.Markdown\OfficeIMO.Markdown.csproj" />
     </ItemGroup>
 
 </Project>

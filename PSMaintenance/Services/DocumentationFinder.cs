@@ -13,7 +13,10 @@ namespace PSMaintenance;
 /// </summary>
 internal sealed class DocumentationFinder
 {
-    private readonly PSCmdlet _cmdlet;
+    private readonly PSCmdlet? _cmdlet;
+    public DocumentationFinder() {
+    }
+
     public DocumentationFinder(PSCmdlet cmdlet) => _cmdlet = cmdlet;
 
     /// <summary>
@@ -26,27 +29,30 @@ internal sealed class DocumentationFinder
         var opts = new DeliveryOptions();
 
         var manifestPath = Path.Combine(root, module.Name + ".psd1");
-        try
+        if (_cmdlet != null)
         {
-            var sb = _cmdlet.InvokeCommand.NewScriptBlock("$m = Test-ModuleManifest -Path $args[0]; $m.PrivateData.PSData.Delivery");
-            var delivery = sb.Invoke(manifestPath).FirstOrDefault() as PSObject;
-            if (delivery != null)
+            try
             {
-                opts.InternalsPath = (string)(Get(delivery, "InternalsPath") ?? "Internals");
-                var sp = Get(delivery, "ScriptsPath") as string;
-                if (!string.IsNullOrWhiteSpace(sp)) opts.ScriptsPath = sp!;
-                var docs = Get(delivery, "DocsPaths");
-                if (docs is System.Collections.IEnumerable en)
+                var sb = _cmdlet.InvokeCommand.NewScriptBlock("$m = Test-ModuleManifest -Path $args[0]; $m.PrivateData.PSData.Delivery");
+                var delivery = sb.Invoke(manifestPath).FirstOrDefault() as PSObject;
+                if (delivery != null)
                 {
-                    var list = new System.Collections.Generic.List<string>();
-                    foreach (var o in en) { var s = o?.ToString(); if (!string.IsNullOrWhiteSpace(s)) list.Add(s!); }
-                    opts.DocsPaths = list;
+                    opts.InternalsPath = (string)(Get(delivery, "InternalsPath") ?? "Internals");
+                    var sp = Get(delivery, "ScriptsPath") as string;
+                    if (!string.IsNullOrWhiteSpace(sp)) opts.ScriptsPath = sp!;
+                    var docs = Get(delivery, "DocsPaths");
+                    if (docs is System.Collections.IEnumerable en)
+                    {
+                        var list = new System.Collections.Generic.List<string>();
+                        foreach (var o in en) { var s = o?.ToString(); if (!string.IsNullOrWhiteSpace(s)) list.Add(s!); }
+                        opts.DocsPaths = list;
+                    }
+                    opts.IntroFile = Get(delivery, "IntroFile") as string;
+                    opts.UpgradeFile = Get(delivery, "UpgradeFile") as string;
                 }
-                opts.IntroFile = Get(delivery, "IntroFile") as string;
-                opts.UpgradeFile = Get(delivery, "UpgradeFile") as string;
             }
+            catch { /* ignore manifest parse failures */ }
         }
-        catch { /* ignore manifest parse failures */ }
 
         var internalsCandidate = Path.Combine(root, opts.InternalsPath ?? "Internals");
         if (Directory.Exists(internalsCandidate)) internals = internalsCandidate;
