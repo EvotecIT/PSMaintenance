@@ -1,0 +1,50 @@
+name: Test .NET
+
+on:
+  push:
+    branches:
+      - master
+    paths-ignore:
+      - '*.md'
+      - 'Docs/**'
+      - '.gitignore'
+  pull_request:
+    branches:
+      - master
+  workflow_dispatch:
+
+env:
+  DOTNET_VERSION: '8.0.x'
+  BUILD_CONFIGURATION: 'Release'
+  TEST_VERBOSITY: minimal
+
+jobs:
+  test-windows:
+    name: Windows
+    runs-on: windows-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restore solution
+        run: dotnet restore PSMaintanance.sln
+
+      - name: Build solution
+        run: dotnet build PSMaintanance.sln --configuration ${{ env.BUILD_CONFIGURATION }} --no-restore
+
+      - name: Run tests (.NET 8.0)
+        run: dotnet test PSMaintenance.Tests/PSMaintenance.Tests.csproj --configuration ${{ env.BUILD_CONFIGURATION }} --framework net8.0 --no-build --verbosity ${{ env.TEST_VERBOSITY }} --logger "console;verbosity=${{ env.TEST_VERBOSITY }}" --logger trx
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-dotnet-windows
+          path: '**/*.trx'
