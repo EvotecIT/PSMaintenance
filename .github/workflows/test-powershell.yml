@@ -41,7 +41,7 @@ jobs:
       - name: Build .NET project
         run: |
           dotnet restore PSMaintanance.sln
-          dotnet build PSMaintenance/PSMaintenance.csproj --configuration ${{ env.BUILD_CONFIGURATION }} --no-restore
+          dotnet build PSMaintenance/PSMaintenance.csproj --configuration ${{ env.BUILD_CONFIGURATION }} --no-restore -warnaserror
 
       - name: Run PowerShell tests
         shell: powershell
@@ -70,7 +70,7 @@ jobs:
       - name: Build .NET project
         run: |
           dotnet restore PSMaintanance.sln
-          dotnet build PSMaintenance/PSMaintenance.csproj --configuration ${{ env.BUILD_CONFIGURATION }} --no-restore
+          dotnet build PSMaintenance/PSMaintenance.csproj --configuration ${{ env.BUILD_CONFIGURATION }} --no-restore -warnaserror
 
       - name: Run PowerShell tests
         shell: pwsh

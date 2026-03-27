@@ -37,7 +37,7 @@ jobs:
         run: dotnet restore PSMaintanance.sln
 
       - name: Build solution
-        run: dotnet build PSMaintanance.sln --configuration ${{ env.BUILD_CONFIGURATION }} --no-restore
+        run: dotnet build PSMaintanance.sln --configuration ${{ env.BUILD_CONFIGURATION }} --no-restore -warnaserror
 
       - name: Run tests (.NET 8.0)
         run: dotnet test PSMaintenance.Tests/PSMaintenance.Tests.csproj --configuration ${{ env.BUILD_CONFIGURATION }} --framework net8.0 --no-build --verbosity ${{ env.TEST_VERBOSITY }} --logger "console;verbosity=${{ env.TEST_VERBOSITY }}" --logger trx

@@ -686,13 +686,18 @@ internal sealed class DocumentationPlanner
 
     private static string? BuildRawBase(string? projectUri, string? refName)
     {
-        if (string.IsNullOrWhiteSpace(projectUri)) return null;
+        var normalizedProjectUri = projectUri?.Trim();
+        if (string.IsNullOrWhiteSpace(normalizedProjectUri)) return null;
         try
         {
-            var info = RepoUrlParser.Parse(projectUri);
+            var info = RepoUrlParser.Parse(normalizedProjectUri!);
             if (info.Host == RepoHost.GitHub && !string.IsNullOrEmpty(info.Owner) && !string.IsNullOrEmpty(info.Repo))
             {
-                var branch = string.IsNullOrWhiteSpace(refName) ? "main" : refName.Trim();
+                var branch = "main";
+                if (!string.IsNullOrWhiteSpace(refName))
+                {
+                    branch = refName!.Trim();
+                }
                 return $"https://raw.githubusercontent.com/{info.Owner}/{info.Repo}/{branch}/";
             }
         }
