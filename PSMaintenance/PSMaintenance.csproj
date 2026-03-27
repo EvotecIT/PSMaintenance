@@ -18,6 +18,9 @@
         <PackageReference Include="PowerShellStandard.Library" Version="5.1.1" PrivateAssets="all" />
         <PackageReference Include="Spectre.Console" Version="0.48.0" />
         <PackageReference Include="Spectre.Console.Json" Version="0.48.0" />
+        <PackageReference Include="HtmlForgeX" Version="0.36.0" />
+        <PackageReference Include="HtmlForgeX.Markdown" Version="0.20.4" />
+        <PackageReference Include="OfficeIMO.Markdown" Version="0.6.6" />
     </ItemGroup>
 
     <!-- Use inbox System.Text.Json on net8.0; add NuGet only for net472 -->
@@ -57,11 +60,5 @@
             DestinationFiles="$(PublishDir)$(AssemblyName).dll-Help.xml"
             Condition="Exists('$(OutputPath)$(AssemblyName).dll-Help.xml')" />
     </Target>
-
-    <ItemGroup>
-        <ProjectReference Include="..\..\HtmlForgeX\HtmlForgeX\HtmlForgeX.csproj" />
-        <ProjectReference Include="..\..\HtmlForgeX\HtmlForgeX.Markdown\HtmlForgeX.Markdown.csproj" />
-        <ProjectReference Include="..\..\OfficeIMO\OfficeIMO.Markdown\OfficeIMO.Markdown.csproj" />
-    </ItemGroup>
 
 </Project>
