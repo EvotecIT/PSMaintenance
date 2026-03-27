@@ -43,7 +43,7 @@ jobs:
         run: dotnet test PSMaintenance.Tests/PSMaintenance.Tests.csproj --configuration ${{ env.BUILD_CONFIGURATION }} --framework net8.0 --no-build --verbosity ${{ env.TEST_VERBOSITY }} --logger "console;verbosity=${{ env.TEST_VERBOSITY }}" --logger trx
 
       - name: Upload test results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: test-results-dotnet-windows
