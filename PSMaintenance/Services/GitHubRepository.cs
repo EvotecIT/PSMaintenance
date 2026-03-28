@@ -130,7 +130,10 @@ internal sealed class GitHubRepository : IRepoClient
                 var r = new RepoRelease();
                 r.Tag = rel.TryGetProperty("tag_name", out var tag) ? tag.GetString() ?? string.Empty : string.Empty;
                 r.Name = rel.TryGetProperty("name", out var name) ? name.GetString() ?? r.Tag : r.Tag;
+                r.Url = rel.TryGetProperty("html_url", out var html) ? html.GetString() : null;
                 r.Body = rel.TryGetProperty("body", out var body) ? (body.GetString() ?? string.Empty) : string.Empty;
+                r.IsDraft = rel.TryGetProperty("draft", out var draft) && draft.ValueKind == JsonValueKind.True;
+                r.IsPrerelease = rel.TryGetProperty("prerelease", out var prerelease) && prerelease.ValueKind == JsonValueKind.True;
                 if (rel.TryGetProperty("published_at", out var pub) && pub.ValueKind == JsonValueKind.String && DateTimeOffset.TryParse(pub.GetString(), out var dto)) r.PublishedAt = dto;
                 if (rel.TryGetProperty("assets", out var assetsEl) && assetsEl.ValueKind == JsonValueKind.Array)
                 {
