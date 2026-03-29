@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Text.RegularExpressions;
 
 namespace PSMaintenance;
@@ -124,15 +125,17 @@ internal sealed class DocumentationPlanner
                 bool anyRemote = false;
                 if (!string.IsNullOrEmpty(readme))
                 {
-                    var baseUri = BuildRawBase(req.ProjectUri, branch);
-                    var di = MakeContentItem(req, "README", RewriteRelativeLinks(readme!, baseUri));
+                    var baseUri = RepositoryContentNormalizer.BuildRawBase(req.ProjectUri, branch);
+                    var blobBaseUri = RepositoryContentNormalizer.BuildBlobBase(req.ProjectUri, branch);
+                    var di = MakeContentItem(req, "README", RepositoryContentNormalizer.RewriteRelativeUris(readme!, baseUri, blobBaseUri));
                     di.Source = "Remote"; di.FileName = "README.md"; di.Title = "README"; di.BaseUri = baseUri;
                     res.Items.Add(di); anyRemote = true;
                 }
                 if (!string.IsNullOrEmpty(changelog))
                 {
-                    var baseUri = BuildRawBase(req.ProjectUri, branch);
-                    var di = MakeContentItem(req, "CHANGELOG", RewriteRelativeLinks(changelog!, baseUri));
+                    var baseUri = RepositoryContentNormalizer.BuildRawBase(req.ProjectUri, branch);
+                    var blobBaseUri = RepositoryContentNormalizer.BuildBlobBase(req.ProjectUri, branch);
+                    var di = MakeContentItem(req, "CHANGELOG", RepositoryContentNormalizer.RewriteRelativeUris(changelog!, baseUri, blobBaseUri));
                     di.Source = "Remote"; di.FileName = "CHANGELOG.md"; di.Title = "CHANGELOG"; di.BaseUri = baseUri;
                     res.Items.Add(di); anyRemote = true;
                 }
@@ -164,7 +167,7 @@ internal sealed class DocumentationPlanner
                                         FileName = Name,
                                         Path = Path,
                                         Source = "Remote",
-                                        BaseUri = BuildRawBase(req.ProjectUri, branch)
+                                        BaseUri = RepositoryContentNormalizer.BuildRawBase(req.ProjectUri, branch)
                                     });
                                     anyRemote = true;
                                     continue;
@@ -176,11 +179,11 @@ internal sealed class DocumentationPlanner
                                     {
                                         Title = Name ?? string.Empty,
                                         Kind = "COMMUNITY",
-                                        Content = RewriteRelativeLinks(content!, BuildRawBase(req.ProjectUri, branch)),
+                                        Content = RepositoryContentNormalizer.RewriteRelativeUris(content!, RepositoryContentNormalizer.BuildRawBase(req.ProjectUri, branch), RepositoryContentNormalizer.BuildBlobBase(req.ProjectUri, branch)),
                                         FileName = Name,
                                         Path = Path,
                                         Source = "Remote",
-                                        BaseUri = BuildRawBase(req.ProjectUri, branch)
+                                        BaseUri = RepositoryContentNormalizer.BuildRawBase(req.ProjectUri, branch)
                                     });
                                     anyRemote = true;
                                     continue;
@@ -188,16 +191,25 @@ internal sealed class DocumentationPlanner
 
                             if (ext == ".md" || ext == ".markdown" || ext == ".txt" || ext == ".help" || ext == ".help.txt")
                             {
-                                // Treat repository path content as documentation pages, not standard tabs
+                                var baseUri = RepositoryContentNormalizer.BuildRawBase(req.ProjectUri, branch);
+                                var blobBaseUri = RepositoryContentNormalizer.BuildBlobBase(req.ProjectUri, branch);
+                                var kind = RepositoryContentNormalizer.IsLikelyTemplateSource(Name, content!)
+                                    ? "DOCSOURCE"
+                                    : "DOC";
+                                var normalizedContent = string.Equals(kind, "DOCSOURCE", StringComparison.OrdinalIgnoreCase)
+                                    ? RepositoryContentNormalizer.WrapAsSourceCodeBlock(content!, "markdown")
+                                    : RepositoryContentNormalizer.RewriteRelativeUris(content!, baseUri, blobBaseUri);
+
+                                // Treat repository path content as documentation pages, not standard tabs.
                                 res.Items.Add(new DocumentItem
                                 {
                                     Title = Name ?? string.Empty,
-                                    Kind = "DOC",
-                                    Content = RewriteRelativeLinks(content!, BuildRawBase(req.ProjectUri, branch)),
+                                    Kind = kind,
+                                    Content = normalizedContent,
                                     FileName = Name,
                                     Path = Path,
                                     Source = "Remote",
-                                    BaseUri = BuildRawBase(req.ProjectUri, branch)
+                                    BaseUri = baseUri
                                 });
                                 anyRemote = true;
                             }
@@ -216,7 +228,33 @@ internal sealed class DocumentationPlanner
             {
                 var fileName = System.IO.Path.GetFileName(it.Path);
                 var title = BuildTitle(req, fileName);
-                res.Items.Add(new DocumentItem { Title = title, Kind = "FILE", Path = it.Path, FileName = fileName, Source = "Local" });
+                var content = string.Empty;
+                try
+                {
+                    if (!string.IsNullOrWhiteSpace(it.Path) && File.Exists(it.Path))
+                    {
+                        content = File.ReadAllText(it.Path);
+                        if (!string.IsNullOrWhiteSpace(req.ProjectUri))
+                        {
+                            content = RepositoryContentNormalizer.RewriteRelativeUris(
+                                content,
+                                RepositoryContentNormalizer.BuildRawBase(req.ProjectUri, req.RepositoryBranch),
+                                RepositoryContentNormalizer.BuildBlobBase(req.ProjectUri, req.RepositoryBranch));
+                        }
+                    }
+                }
+                catch { }
+
+                res.Items.Add(new DocumentItem
+                {
+                    Title = title,
+                    Kind = "FILE",
+                    Path = it.Path,
+                    FileName = fileName,
+                    Source = "Local",
+                    Content = content,
+                    BaseUri = RepositoryContentNormalizer.BuildRawBase(req.ProjectUri, req.RepositoryBranch)
+                });
                 continue;
             }
             if (it.Kind == "INTRO")
@@ -279,14 +317,30 @@ internal sealed class DocumentationPlanner
             foreach (var f in formats)
             {
                 var content = System.IO.File.ReadAllText(f.FullName);
-                res.Items.Add(new DocumentItem { Title = BuildTitle(req, f.Name), Kind = "FORMAT", Path = f.FullName, FileName = f.Name, Content = "```xml\n" + content + "\n```", Source = "Local" });
+                res.Items.Add(new DocumentItem
+                {
+                    Title = BuildTitle(req, f.Name),
+                    Kind = "FORMAT",
+                    Path = f.FullName,
+                    FileName = f.Name,
+                    Content = RepositoryContentNormalizer.WrapAsSourceCodeBlock(content, "text"),
+                    Source = "Local"
+                });
             }
 
             var types = _finder.ResolveTypesFiles((req.RootBase, req.InternalsBase, new DeliveryOptions()), req.TypesToProcess);
             foreach (var f in types)
             {
                 var content = System.IO.File.ReadAllText(f.FullName);
-                res.Items.Add(new DocumentItem { Title = BuildTitle(req, f.Name), Kind = "TYPE", Path = f.FullName, FileName = f.Name, Content = "```xml\n" + content + "\n```", Source = "Local" });
+                res.Items.Add(new DocumentItem
+                {
+                    Title = BuildTitle(req, f.Name),
+                    Kind = "TYPE",
+                    Path = f.FullName,
+                    FileName = f.Name,
+                    Content = RepositoryContentNormalizer.WrapAsSourceCodeBlock(content, "text"),
+                    Source = "Local"
+                });
             }
         }
         catch { }
@@ -298,7 +352,14 @@ internal sealed class DocumentationPlanner
             foreach (var f in community)
             {
                 string content; try { content = File.ReadAllText(f.FullName); } catch { continue; }
-                res.Items.Add(new DocumentItem { Title = BuildTitle(req, f.Name), Kind = "COMMUNITY", Path = f.FullName, FileName = f.Name, Content = content, Source = "Local" });
+                if (!string.IsNullOrWhiteSpace(req.ProjectUri))
+                {
+                    content = RepositoryContentNormalizer.RewriteRelativeUris(
+                        content,
+                        RepositoryContentNormalizer.BuildRawBase(req.ProjectUri, req.RepositoryBranch),
+                        RepositoryContentNormalizer.BuildBlobBase(req.ProjectUri, req.RepositoryBranch));
+                }
+                res.Items.Add(new DocumentItem { Title = BuildTitle(req, f.Name), Kind = "COMMUNITY", Path = f.FullName, FileName = f.Name, Content = content, Source = "Local", BaseUri = RepositoryContentNormalizer.BuildRawBase(req.ProjectUri, req.RepositoryBranch) });
             }
         }
         catch { }
@@ -324,12 +385,12 @@ internal sealed class DocumentationPlanner
                     if (forceRemoteStandard || !hasReadme)
                     {
                         var readme = TryFetchFirst(client, branch, new[] { "README.md", "README.MD", "Readme.md" });
-                        if (!string.IsNullOrEmpty(readme)) { var di = MakeContentItem(req, "README", RewriteRelativeLinks(readme!, BuildRawBase(req.ProjectUri, branch))); di.Source = "Remote"; di.FileName = "README.md"; di.Title = "README"; res.Items.Add(di); }
+                        if (!string.IsNullOrEmpty(readme)) { var di = MakeContentItem(req, "README", RepositoryContentNormalizer.RewriteRelativeUris(readme!, RepositoryContentNormalizer.BuildRawBase(req.ProjectUri, branch), RepositoryContentNormalizer.BuildBlobBase(req.ProjectUri, branch))); di.Source = "Remote"; di.FileName = "README.md"; di.Title = "README"; res.Items.Add(di); }
                     }
                     if (forceRemoteStandard || !hasChlog)
                     {
                         var ch = TryFetchFirst(client, branch, new[] { "CHANGELOG.md", "CHANGELOG.MD", "Changelog.md" });
-                        if (!string.IsNullOrEmpty(ch)) { var di = MakeContentItem(req, "CHANGELOG", RewriteRelativeLinks(ch!, BuildRawBase(req.ProjectUri, branch))); di.Source = "Remote"; di.FileName = "CHANGELOG.md"; di.Title = "CHANGELOG"; res.Items.Add(di); }
+                        if (!string.IsNullOrEmpty(ch)) { var di = MakeContentItem(req, "CHANGELOG", RepositoryContentNormalizer.RewriteRelativeUris(ch!, RepositoryContentNormalizer.BuildRawBase(req.ProjectUri, branch), RepositoryContentNormalizer.BuildBlobBase(req.ProjectUri, branch))); di.Source = "Remote"; di.FileName = "CHANGELOG.md"; di.Title = "CHANGELOG"; res.Items.Add(di); }
                     }
                     if (forceRemoteStandard || !hasLic)
                     {
@@ -400,15 +461,23 @@ internal sealed class DocumentationPlanner
                                 if (string.IsNullOrEmpty(content)) continue;
                                 if (f.Name.StartsWith("about_", StringComparison.OrdinalIgnoreCase) && f.Name.EndsWith(".help.txt", StringComparison.OrdinalIgnoreCase))
                                 {
-                                    res.Items.Add(new DocumentItem { Title = f.Name, Kind = "ABOUT", Content = AboutToMarkdown(content!), FileName = f.Name, Path = f.Path, Source = "Remote", BaseUri = BuildRawBase(req.ProjectUri, branch2) });
+                                    res.Items.Add(new DocumentItem { Title = f.Name, Kind = "ABOUT", Content = AboutToMarkdown(content!), FileName = f.Name, Path = f.Path, Source = "Remote", BaseUri = RepositoryContentNormalizer.BuildRawBase(req.ProjectUri, branch2) });
                                     continue;
                                 }
                                 if (IsCommunityFile(f.Name))
                                 {
-                                    res.Items.Add(new DocumentItem { Title = f.Name, Kind = "COMMUNITY", Content = RewriteRelativeLinks(content!, BuildRawBase(req.ProjectUri, branch2)), FileName = f.Name, Path = f.Path, Source = "Remote", BaseUri = BuildRawBase(req.ProjectUri, branch2) });
+                                    res.Items.Add(new DocumentItem { Title = f.Name, Kind = "COMMUNITY", Content = RepositoryContentNormalizer.RewriteRelativeUris(content!, RepositoryContentNormalizer.BuildRawBase(req.ProjectUri, branch2), RepositoryContentNormalizer.BuildBlobBase(req.ProjectUri, branch2)), FileName = f.Name, Path = f.Path, Source = "Remote", BaseUri = RepositoryContentNormalizer.BuildRawBase(req.ProjectUri, branch2) });
                                     continue;
                                 }
-                                res.Items.Add(new DocumentItem { Title = f.Name, Kind = "DOC", Content = RewriteRelativeLinks(content!, BuildRawBase(req.ProjectUri, branch2)), FileName = f.Name, Path = f.Path, Source = "Remote", BaseUri = BuildRawBase(req.ProjectUri, branch2) });
+                                var baseUri = RepositoryContentNormalizer.BuildRawBase(req.ProjectUri, branch2);
+                                var blobBaseUri = RepositoryContentNormalizer.BuildBlobBase(req.ProjectUri, branch2);
+                                var kind = RepositoryContentNormalizer.IsLikelyTemplateSource(f.Name, content!)
+                                    ? "DOCSOURCE"
+                                    : "DOC";
+                                var normalizedContent = string.Equals(kind, "DOCSOURCE", StringComparison.OrdinalIgnoreCase)
+                                    ? RepositoryContentNormalizer.WrapAsSourceCodeBlock(content!, "markdown")
+                                    : RepositoryContentNormalizer.RewriteRelativeUris(content!, baseUri, blobBaseUri);
+                                res.Items.Add(new DocumentItem { Title = f.Name, Kind = kind, Content = normalizedContent, FileName = f.Name, Path = f.Path, Source = "Remote", BaseUri = baseUri });
                             }
                         }
                     }
@@ -478,7 +547,17 @@ internal sealed class DocumentationPlanner
                     foreach (var f in ordered)
                     {
                         string content; try { content = File.ReadAllText(f); } catch { continue; }
-                        res.Items.Add(new DocumentItem { Title = Path.GetFileName(f), Kind = "DOC", Content = content, FileName = Path.GetFileName(f), Path = f, Source = "Local" });
+                        var fileName = Path.GetFileName(f);
+                        var kind = RepositoryContentNormalizer.IsLikelyTemplateSource(fileName, content)
+                            ? "DOCSOURCE"
+                            : "DOC";
+                        var normalizedContent = string.Equals(kind, "DOCSOURCE", StringComparison.OrdinalIgnoreCase)
+                            ? RepositoryContentNormalizer.WrapAsSourceCodeBlock(content, "markdown")
+                            : RepositoryContentNormalizer.RewriteRelativeUris(
+                                content,
+                                RepositoryContentNormalizer.BuildRawBase(req.ProjectUri, req.RepositoryBranch),
+                                RepositoryContentNormalizer.BuildBlobBase(req.ProjectUri, req.RepositoryBranch));
+                        res.Items.Add(new DocumentItem { Title = fileName, Kind = kind, Content = normalizedContent, FileName = fileName, Path = f, Source = "Local", BaseUri = RepositoryContentNormalizer.BuildRawBase(req.ProjectUri, req.RepositoryBranch) });
                     }
                 }
             }
@@ -528,10 +607,26 @@ internal sealed class DocumentationPlanner
             }
             if (!string.IsNullOrEmpty(changelogContent))
             {
-                var releasesMd = BuildReleaseSummary(changelogContent!);
-                if (!string.IsNullOrWhiteSpace(releasesMd))
+                var parsedReleases = ParseChangelogReleases(changelogContent!);
+                if (parsedReleases.Count > 0 && !string.IsNullOrWhiteSpace(req.ProjectUri))
                 {
-                    res.Items.Add(new DocumentItem { Title = BuildTitle(req, "Releases"), Kind = "RELEASES", Content = releasesMd, Source = string.IsNullOrEmpty(req.ProjectUri) ? "Local" : "Derived" });
+                    var repoReleases = GetNormalizedRepoReleases(req, clientOverride);
+                    if (repoReleases.Count > 0)
+                    {
+                        parsedReleases = MergeReleaseMetadata(parsedReleases, repoReleases);
+                    }
+                    parsedReleases = NormalizeRepoReleases(parsedReleases, req.ProjectUri);
+                }
+                if (parsedReleases.Count > 0)
+                {
+                    res.Items.Add(new DocumentItem
+                    {
+                        Title = BuildTitle(req, "Releases"),
+                        Kind = "RELEASES",
+                        Content = BuildReleaseSummaryMarkdown(parsedReleases),
+                        Releases = parsedReleases,
+                        Source = string.IsNullOrEmpty(req.ProjectUri) ? "Local" : "Derived"
+                    });
                 }
             }
             // If changelog not present, try repo releases API
@@ -539,41 +634,42 @@ internal sealed class DocumentationPlanner
             {
                 try
                 {
-                    if (!string.IsNullOrWhiteSpace(req.ProjectUri)) {
-                        var info = RepoUrlParser.Parse(req.ProjectUri!);
-                        var token = ResolveToken(req.RepositoryToken);
-                        if (string.IsNullOrEmpty(token)) token = TokenStore.GetToken(info.Host) ?? string.Empty;
-                        var client = RepoClientFactory.Create(info, token);
-                        var rels = client?.ListReleases() ?? new List<RepoRelease>();
-                    if (rels.Count > 0)
+                    var normalizedReleases = GetNormalizedRepoReleases(req, clientOverride);
+                    if (normalizedReleases.Count > 0)
                     {
                         var sb = new System.Text.StringBuilder();
-                            sb.AppendLine("# Releases (repository API)");
-                            foreach (var r in rels)
+                        sb.AppendLine("# Releases (repository API)");
+                        foreach (var r in normalizedReleases)
+                        {
+                            sb.Append("## ").Append(string.IsNullOrEmpty(r.Name) ? r.Tag : r.Name);
+                            if (r.PublishedAt.HasValue) sb.Append(" (" + r.PublishedAt.Value.ToString("yyyy-MM-dd") + ")");
+                            sb.AppendLine();
+                            if (!string.IsNullOrWhiteSpace(r.Body))
                             {
-                                sb.Append("## ").Append(string.IsNullOrEmpty(r.Name) ? r.Tag : r.Name);
-                                if (r.PublishedAt.HasValue) sb.Append(" (" + r.PublishedAt.Value.ToString("yyyy-MM-dd") + ")");
-                                sb.AppendLine();
-                                if (!string.IsNullOrWhiteSpace(r.Body))
+                                sb.AppendLine(r.Body.Trim()).AppendLine();
+                            }
+                            if (r.Assets.Count > 0)
+                            {
+                                sb.AppendLine("### Assets");
+                                foreach (var a in r.Assets)
                                 {
-                                    var baseUri = BuildRawBase(req.ProjectUri, r.Tag);
-                                    sb.AppendLine(RewriteRelativeLinks(r.Body.Trim(), baseUri)).AppendLine();
-                                }
-                                if (r.Assets.Count > 0)
-                                {
-                                    sb.AppendLine("### Assets");
-                                    foreach (var a in r.Assets)
-                                    {
-                                        sb.Append("- [").Append(a.Name).Append("](").Append(a.DownloadUrl).Append(")");
-                                        if (a.Size.HasValue) sb.Append($" ({a.Size.Value / 1024} KB)");
-                                        if (!string.IsNullOrEmpty(a.ContentType)) sb.Append($" {a.ContentType}");
-                                        sb.AppendLine();
-                                    }
+                                    sb.Append("- [").Append(a.Name).Append("](").Append(a.DownloadUrl).Append(")");
+                                    if (a.Size.HasValue) sb.Append($" ({a.Size.Value / 1024} KB)");
+                                    if (!string.IsNullOrEmpty(a.ContentType)) sb.Append($" {a.ContentType}");
                                     sb.AppendLine();
                                 }
+                                sb.AppendLine();
                             }
-                            res.Items.Add(new DocumentItem { Title = BuildTitle(req, "Releases"), Kind = "RELEASES", Content = sb.ToString(), Source = "Remote", BaseUri = BuildRawBase(req.ProjectUri, rels.FirstOrDefault()?.Tag) });
                         }
+                        res.Items.Add(new DocumentItem
+                        {
+                            Title = BuildTitle(req, "Releases"),
+                            Kind = "RELEASES",
+                            Content = sb.ToString(),
+                            Releases = normalizedReleases,
+                            Source = "Remote",
+                            BaseUri = RepositoryContentNormalizer.BuildRawBase(req.ProjectUri, normalizedReleases.FirstOrDefault()?.Tag)
+                        });
                     }
                 }
                 catch { }
@@ -659,73 +755,382 @@ internal sealed class DocumentationPlanner
         return sb.ToString();
     }
 
-    private static string BuildReleaseSummary(string changelogContent)
+    private static List<RepoRelease> NormalizeRepoReleases(IEnumerable<RepoRelease> releases, string? projectUri)
     {
-        if (string.IsNullOrWhiteSpace(changelogContent)) return string.Empty;
-        var lines = changelogContent.Replace("\r\n", "\n").Split('\n');
-        var releases = new System.Collections.Generic.List<(string Version,string Title)>();
-        var rx = new System.Text.RegularExpressions.Regex("^##\\s*\\[?v?(?<ver>[^\\]]+)\\]?", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-        foreach (var line in lines)
+        var normalized = new List<RepoRelease>();
+        foreach (var release in releases.Where(r => r is not null && !r.IsDraft))
         {
-            var m = rx.Match(line.Trim());
-            if (m.Success)
+            var normalizedTag = InferReleaseTag(release.Tag, release.Name);
+            var normalizedName = NormalizeReleaseHeadingTitle(release.Name);
+            var clone = new RepoRelease
             {
-                var ver = m.Groups["ver"].Value.Trim();
-                releases.Add((ver, line.TrimStart('#',' ')));
+                Tag = normalizedTag,
+                Name = normalizedName,
+                Url = string.IsNullOrWhiteSpace(release.Url) ? BuildReleaseUrl(projectUri, normalizedTag) : release.Url,
+                IsDraft = release.IsDraft,
+                IsPrerelease = release.IsPrerelease || IsLikelyPrerelease(normalizedTag, normalizedName),
+                PublishedAt = release.PublishedAt,
+                Body = NormalizeReleaseBody(release.Body, projectUri, normalizedTag)
+            };
+            foreach (var asset in release.Assets)
+            {
+                clone.Assets.Add(new RepoReleaseAsset
+                {
+                    Name = asset.Name,
+                    DownloadUrl = asset.DownloadUrl,
+                    Size = asset.Size,
+                    ContentType = asset.ContentType
+                });
+            }
+
+            normalized.Add(clone);
+        }
+
+        return normalized;
+    }
+
+    private static List<RepoRelease> ParseChangelogReleases(string changelogContent)
+    {
+        var releases = new List<RepoRelease>();
+        if (string.IsNullOrWhiteSpace(changelogContent))
+            return releases;
+
+        var lines = changelogContent.Replace("\r\n", "\n").Split('\n');
+        RepoRelease? current = null;
+        var body = new StringBuilder();
+        var headingRegex = new Regex("^##\\s*(?<title>.+)$", RegexOptions.IgnoreCase);
+        var tagRegex = new Regex("\\[(?<tag>[^\\]]+)\\]|\\b(v?\\d+\\.\\d+[^ ]*)", RegexOptions.IgnoreCase);
+        var dateRegex = new Regex("\\b(?<date>\\d{4}-\\d{2}-\\d{2})\\b", RegexOptions.CultureInvariant);
+
+        foreach (var rawLine in lines)
+        {
+            var trimmedLine = rawLine.TrimEnd();
+            var headingMatch = headingRegex.Match(trimmedLine.Trim());
+            if (headingMatch.Success)
+            {
+                if (current is not null)
+                {
+                    current.Body = body.ToString().Trim();
+                    releases.Add(current);
+                }
+
+                body.Clear();
+                var title = NormalizeReleaseHeadingTitle(headingMatch.Groups["title"].Value.Trim());
+                var tag = string.Empty;
+                var tagMatch = tagRegex.Match(title);
+                if (tagMatch.Success)
+                {
+                    tag = NormalizeReleaseToken(tagMatch.Groups["tag"].Success
+                        ? tagMatch.Groups["tag"].Value.Trim()
+                        : tagMatch.Groups[2].Value.Trim());
+                }
+
+                DateTimeOffset? publishedAt = null;
+                var dateMatch = dateRegex.Match(title);
+                if (dateMatch.Success && DateTimeOffset.TryParse(dateMatch.Groups["date"].Value, out var parsedDate))
+                    publishedAt = parsedDate;
+
+                current = new RepoRelease
+                {
+                    Tag = tag,
+                    Name = title,
+                    Url = null,
+                    IsPrerelease = IsLikelyPrerelease(tag, title),
+                    PublishedAt = publishedAt
+                };
+
+                continue;
+            }
+
+            if (current is not null)
+                body.AppendLine(rawLine);
+        }
+
+        if (current is not null)
+        {
+            current.Body = body.ToString().Trim();
+            releases.Add(current);
+        }
+
+        return releases;
+    }
+
+    private static string BuildReleaseSummaryMarkdown(IEnumerable<RepoRelease> releases)
+    {
+        var releaseList = releases.ToList();
+        if (releaseList.Count == 0)
+            return string.Empty;
+
+        var sb = new StringBuilder();
+        sb.AppendLine("# Releases");
+        sb.AppendLine();
+        sb.AppendLine($"- Total releases: {releaseList.Count}");
+        var latest = releaseList.OrderByDescending(r => r.PublishedAt ?? DateTimeOffset.MinValue).FirstOrDefault();
+        if (latest is not null)
+        {
+            var latestLabel = string.IsNullOrWhiteSpace(latest.Name) ? latest.Tag : latest.Name;
+            if (!string.IsNullOrWhiteSpace(latestLabel))
+                sb.AppendLine($"- Latest: {latestLabel}");
+        }
+        sb.AppendLine();
+
+        foreach (var r in releaseList)
+        {
+            var label = string.IsNullOrWhiteSpace(r.Name) ? r.Tag : r.Name;
+            if (string.IsNullOrWhiteSpace(label))
+                label = "Release";
+
+            sb.Append("## ").Append(label);
+            if (r.PublishedAt.HasValue)
+                sb.Append(" (").Append(r.PublishedAt.Value.ToString("yyyy-MM-dd")).Append(')');
+            sb.AppendLine();
+
+            if (!string.IsNullOrWhiteSpace(r.Body))
+                sb.AppendLine(r.Body.Trim()).AppendLine();
+
+            if (r.Assets.Count > 0)
+            {
+                sb.AppendLine("### Assets");
+                foreach (var asset in r.Assets)
+                {
+                    sb.Append("- [").Append(asset.Name).Append("](").Append(asset.DownloadUrl).Append(')');
+                    if (asset.Size.HasValue)
+                        sb.Append(" (").Append(asset.Size.Value / 1024).Append(" KB)");
+                    sb.AppendLine();
+                }
+                sb.AppendLine();
             }
         }
-        if (releases.Count == 0) return string.Empty;
-        var sb = new System.Text.StringBuilder();
-        sb.AppendLine("# Releases (from CHANGELOG)");
-        foreach (var r in releases)
-        {
-            sb.Append("- ").Append(r.Version).AppendLine();
-        }
+
         return sb.ToString();
     }
 
-    private static string? BuildRawBase(string? projectUri, string? refName)
+    private static List<RepoRelease> GetNormalizedRepoReleases(Request req, IRepoClient? clientOverride = null)
     {
-        var normalizedProjectUri = projectUri?.Trim();
-        if (string.IsNullOrWhiteSpace(normalizedProjectUri)) return null;
+        if (string.IsNullOrWhiteSpace(req.ProjectUri))
+            return new List<RepoRelease>();
+
+        var client = clientOverride;
+        if (client is null)
+        {
+            var info = RepoUrlParser.Parse(req.ProjectUri!);
+            var token = ResolveToken(req.RepositoryToken);
+            if (string.IsNullOrEmpty(token))
+                token = TokenStore.GetToken(info.Host) ?? string.Empty;
+
+            client = RepoClientFactory.Create(info, token);
+        }
+        var rels = client?.ListReleases() ?? new List<RepoRelease>();
+        return rels.Count > 0 ? NormalizeRepoReleases(rels, req.ProjectUri) : new List<RepoRelease>();
+    }
+
+    private static List<RepoRelease> MergeReleaseMetadata(IEnumerable<RepoRelease> changelogReleases, IEnumerable<RepoRelease> repoReleases)
+    {
+        var merged = new List<RepoRelease>();
+        var remainingRepoReleases = repoReleases.ToList();
+
+        foreach (var changelogRelease in changelogReleases)
+        {
+            var match = FindMatchingRelease(changelogRelease, remainingRepoReleases);
+            if (match is null)
+            {
+                merged.Add(changelogRelease);
+                continue;
+            }
+
+            remainingRepoReleases.Remove(match);
+            var mergedRelease = new RepoRelease
+            {
+                Tag = string.IsNullOrWhiteSpace(changelogRelease.Tag) ? match.Tag : changelogRelease.Tag,
+                Name = string.IsNullOrWhiteSpace(changelogRelease.Name) ? match.Name : changelogRelease.Name,
+                Url = string.IsNullOrWhiteSpace(changelogRelease.Url) ? match.Url : changelogRelease.Url,
+                IsDraft = changelogRelease.IsDraft || match.IsDraft,
+                IsPrerelease = changelogRelease.IsPrerelease || match.IsPrerelease,
+                PublishedAt = changelogRelease.PublishedAt ?? match.PublishedAt,
+                Body = string.IsNullOrWhiteSpace(changelogRelease.Body) ? match.Body : changelogRelease.Body
+            };
+            foreach (var asset in changelogRelease.Assets.Count > 0 ? changelogRelease.Assets : match.Assets)
+            {
+                mergedRelease.Assets.Add(new RepoReleaseAsset
+                {
+                    Name = asset.Name,
+                    DownloadUrl = asset.DownloadUrl,
+                    Size = asset.Size,
+                    ContentType = asset.ContentType
+                });
+            }
+            merged.Add(mergedRelease);
+        }
+
+        merged.AddRange(remainingRepoReleases);
+        return merged;
+    }
+
+    private static RepoRelease? FindMatchingRelease(RepoRelease release, IEnumerable<RepoRelease> candidates)
+    {
+        var releaseKeys = EnumerateReleaseKeys(release).Where(k => !string.IsNullOrWhiteSpace(k)).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (releaseKeys.Count == 0)
+            return null;
+
+        return candidates.FirstOrDefault(candidate => EnumerateReleaseKeys(candidate).Any(k => releaseKeys.Contains(k)));
+    }
+
+    private static IEnumerable<string> EnumerateReleaseKeys(RepoRelease release)
+    {
+        var tag = NormalizeReleaseToken(release.Tag);
+        var name = NormalizeReleaseHeadingTitle(release.Name);
+        var version = ExtractReleaseVersionToken(tag) ?? ExtractReleaseVersionToken(name);
+
+        if (!string.IsNullOrWhiteSpace(tag))
+            yield return tag;
+        if (!string.IsNullOrWhiteSpace(name))
+            yield return name;
+        if (!string.IsNullOrWhiteSpace(version))
+        {
+            yield return version!;
+            yield return "v" + version;
+        }
+    }
+
+    private static string NormalizeReleaseBody(string? body, string? projectUri, string? reference)
+    {
+        var normalized = ConvertSimpleHtmlLinksToMarkdown(body ?? string.Empty);
+        normalized = RepositoryContentNormalizer.RewriteRelativeUris(
+            normalized,
+            RepositoryContentNormalizer.BuildRawBase(projectUri, reference),
+            RepositoryContentNormalizer.BuildBlobBase(projectUri, reference));
+
+        return LinkifyIssueReferences(normalized, projectUri);
+    }
+
+    private static string ConvertSimpleHtmlLinksToMarkdown(string content)
+    {
+        if (string.IsNullOrWhiteSpace(content))
+            return content ?? string.Empty;
+
+        return Regex.Replace(
+            content,
+            @"<a\b[^>]*\bhref\s*=\s*(['""])(?<url>.*?)\1[^>]*>(?<text>.*?)</a>",
+            match =>
+            {
+                var url = match.Groups["url"].Value.Trim();
+                var text = Regex.Replace(match.Groups["text"].Value, "<.*?>", string.Empty, RegexOptions.Singleline).Trim();
+                if (string.IsNullOrWhiteSpace(url) || string.IsNullOrWhiteSpace(text))
+                    return match.Value;
+
+                return $"[{System.Net.WebUtility.HtmlDecode(text)}]({url})";
+            },
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Singleline);
+    }
+
+    private static string LinkifyIssueReferences(string content, string? projectUri)
+    {
+        if (string.IsNullOrWhiteSpace(content) || string.IsNullOrWhiteSpace(projectUri))
+            return content ?? string.Empty;
+
         try
         {
-            var info = RepoUrlParser.Parse(normalizedProjectUri!);
-            if (info.Host == RepoHost.GitHub && !string.IsNullOrEmpty(info.Owner) && !string.IsNullOrEmpty(info.Repo))
+            var info = RepoUrlParser.Parse(projectUri!);
+            if (info.Host != RepoHost.GitHub || string.IsNullOrWhiteSpace(info.Owner) || string.IsNullOrWhiteSpace(info.Repo))
+                return content;
+
+            return Regex.Replace(
+                content,
+                @"(^|[\s(])#(?<id>\d+)\b",
+                match => $"{match.Groups[1].Value}[#{match.Groups["id"].Value}](https://github.com/{info.Owner}/{info.Repo}/issues/{match.Groups["id"].Value})",
+                RegexOptions.CultureInvariant | RegexOptions.Multiline);
+        }
+        catch
+        {
+            return content;
+        }
+    }
+
+    private static string? BuildReleaseUrl(string? projectUri, string? tag)
+    {
+        if (string.IsNullOrWhiteSpace(projectUri) || string.IsNullOrWhiteSpace(tag))
+            return null;
+
+        var normalizedProjectUri = projectUri!.Trim();
+        var normalizedTag = tag!.Trim();
+
+        try
+        {
+            var info = RepoUrlParser.Parse(normalizedProjectUri);
+            if (info.Host == RepoHost.GitHub && !string.IsNullOrWhiteSpace(info.Owner) && !string.IsNullOrWhiteSpace(info.Repo))
             {
-                var branch = "main";
-                if (!string.IsNullOrWhiteSpace(refName))
-                {
-                    branch = refName!.Trim();
-                }
-                return $"https://raw.githubusercontent.com/{info.Owner}/{info.Repo}/{branch}/";
+                return $"https://github.com/{info.Owner}/{info.Repo}/releases/tag/{Uri.EscapeDataString(normalizedTag)}";
             }
         }
-        catch { }
+        catch
+        {
+            // Ignore invalid repository URLs and fall back to null.
+        }
+
         return null;
     }
 
-    private static string RewriteRelativeLinks(string markdown, string? baseUri)
+    private static bool IsLikelyPrerelease(string? tag, string? name)
     {
-        if (string.IsNullOrWhiteSpace(markdown) || string.IsNullOrWhiteSpace(baseUri)) return markdown ?? string.Empty;
-        string repl(Match m)
-        {
-            var url = m.Groups[2].Value;
-            if (string.IsNullOrWhiteSpace(url)) return m.Value;
-            if (url.StartsWith("http://", StringComparison.OrdinalIgnoreCase) || url.StartsWith("https://", StringComparison.OrdinalIgnoreCase)) return m.Value;
-            if (url.StartsWith("//") || url.StartsWith("#") || url.StartsWith("mailto:") || url.StartsWith("data:")) return m.Value;
-            try
-            {
-                var abs = new Uri(new Uri(baseUri!, UriKind.Absolute), url).ToString();
-                return m.Groups[1].Value + abs + m.Groups[3].Value;
-            }
-            catch { return m.Value; }
-        }
+        var text = string.Join(" ", new[] { tag ?? string.Empty, name ?? string.Empty }).Trim();
+        if (string.IsNullOrWhiteSpace(text))
+            return false;
 
-        // Matches [text](url) and ![alt](url)
-        var pattern = @"(!?\[[^\]]*\]\()([^\)]+)(\))";
-        return Regex.Replace(markdown, pattern, new MatchEvaluator(repl));
+        return text.Contains("preview", StringComparison.OrdinalIgnoreCase)
+               || text.Contains("prerelease", StringComparison.OrdinalIgnoreCase)
+               || text.Contains("pre-release", StringComparison.OrdinalIgnoreCase)
+               || text.Contains("alpha", StringComparison.OrdinalIgnoreCase)
+               || text.Contains("beta", StringComparison.OrdinalIgnoreCase)
+               || Regex.IsMatch(text, @"(?<![a-z])rc[\.-]?\d*", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
     }
+
+    private static string NormalizeReleaseHeadingTitle(string? title)
+    {
+        var normalized = title ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(normalized))
+            return string.Empty;
+
+        normalized = normalized.Trim();
+        return normalized.TrimEnd(':', ';', ',', ')', ']');
+    }
+
+    private static string NormalizeReleaseToken(string? token)
+    {
+        var normalized = token ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(normalized))
+            return string.Empty;
+
+        normalized = normalized.Trim();
+        return normalized.TrimEnd(':', ';', ',', ')', ']');
+    }
+
+    private static string InferReleaseTag(string? tag, string? name)
+    {
+        var normalizedTag = NormalizeReleaseToken(tag);
+        if (!string.IsNullOrWhiteSpace(normalizedTag))
+            return normalizedTag;
+
+        var version = ExtractReleaseVersionToken(name);
+        if (string.IsNullOrWhiteSpace(version))
+            return string.Empty;
+
+        return "v" + version;
+    }
+
+    private static string? ExtractReleaseVersionToken(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return null;
+
+        var match = Regex.Match(text, @"\bv?(?<version>\d+(?:\.\d+)+(?:[-a-z0-9\.]+)?)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        return match.Success ? match.Groups["version"].Value : null;
+    }
+
+    private static string? BuildRawBase(string? projectUri, string? refName)
+        => RepositoryContentNormalizer.BuildRawBase(projectUri, refName);
+
+    private static string RewriteRelativeLinks(string markdown, string? baseUri)
+        => RepositoryContentNormalizer.RewriteRelativeUris(markdown, baseUri);
 
     private static object? GetDeliveryValue(object? delivery, string name)
     {

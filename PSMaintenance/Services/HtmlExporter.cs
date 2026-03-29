@@ -58,6 +58,7 @@ internal sealed class HtmlExporter
                                 // Standard docs (everything except SCRIPT/DOC/ABOUT/FORMAT/TYPE/COMMUNITY/RELEASES kinds)
                                 var standard = list.Where(x => !string.Equals(x.Kind, "SCRIPT", System.StringComparison.OrdinalIgnoreCase)
                                                            && !string.Equals(x.Kind, "DOC", System.StringComparison.OrdinalIgnoreCase)
+                                                           && !string.Equals(x.Kind, "DOCSOURCE", System.StringComparison.OrdinalIgnoreCase)
                                                            && !string.Equals(x.Kind, "ABOUT", System.StringComparison.OrdinalIgnoreCase)
                                                            && !string.Equals(x.Kind, "FORMAT", System.StringComparison.OrdinalIgnoreCase)
                                                            && !string.Equals(x.Kind, "TYPE", System.StringComparison.OrdinalIgnoreCase)
@@ -326,6 +327,68 @@ internal sealed class HtmlExporter
             });
         }
 
+                                // Documentation source templates (Liquid/Jekyll or similar)
+        var docSourcesAll = list.Where(x => string.Equals(x.Kind, "DOCSOURCE", System.StringComparison.OrdinalIgnoreCase)).ToList();
+        if (docSourcesAll.Count > 0)
+        {
+            var docSourcesLocal = docSourcesAll.Where(x => string.Equals(x.Source, "Local", StringComparison.OrdinalIgnoreCase)).ToList();
+            var docSourcesRepo  = docSourcesAll.Where(x => string.Equals(x.Source, "Remote", StringComparison.OrdinalIgnoreCase)).ToList();
+            log?.Invoke($"Adding Source Docs tab with {docSourcesAll.Count} items (Local={docSourcesLocal.Count}, Repo={docSourcesRepo.Count})...");
+            tabs.AddTab("🧱 Source Docs", panel =>
+            {
+                void RenderSourceTabs(TablerTabs innerTabs, IEnumerable<DocumentItem> itemsToRender)
+                {
+                    foreach (var d in itemsToRender)
+                    {
+                        var name = string.IsNullOrWhiteSpace(d.FileName) ? MakeShortTabTitle(d) : d.FileName;
+                        innerTabs.AddTab(name ?? string.Empty, pp =>
+                        {
+                            var md = d.Content;
+                            if (string.IsNullOrWhiteSpace(md) && !string.IsNullOrWhiteSpace(d.Path) && File.Exists(d.Path))
+                            {
+                                md = RepositoryContentNormalizer.WrapAsSourceCodeBlock(File.ReadAllText(d.Path), "markdown");
+                            }
+
+                            pp.Markdown(md ?? string.Empty, new MarkdownOptions
+                            {
+                                HeadingsBaseLevel = 2,
+                                AutolinkBareUrls = true,
+                                Sanitize = true,
+                                AllowRawHtmlInline = true,
+                                AllowRawHtmlBlocks = true
+                            });
+                        });
+                    }
+                }
+
+                if (docSourcesLocal.Count > 0 && docSourcesRepo.Count > 0)
+                {
+                    panel.Tabs(group =>
+                    {
+                        group.AddTab("📄 Local", p =>
+                        {
+                            var inner = new TablerTabs();
+                            p.Add(inner);
+                            RenderSourceTabs(inner, docSourcesLocal);
+                        });
+                        group.AddTab("🌐 Repository", p =>
+                        {
+                            var inner = new TablerTabs();
+                            p.Add(inner);
+                            RenderSourceTabs(inner, docSourcesRepo);
+                        });
+                    });
+                }
+                else
+                {
+                    var render = docSourcesLocal.Count > 0 ? docSourcesLocal : docSourcesRepo;
+                    var inner = new TablerTabs();
+                    panel.Add(inner);
+                    RenderSourceTabs(inner, render);
+                }
+            });
+        }
+
                                 // About topics (about_*.help.txt)
                                 var abouts = list.Where(x => string.Equals(x.Kind, "ABOUT", System.StringComparison.OrdinalIgnoreCase)).ToList();
                                 if (abouts.Count > 0)
@@ -367,8 +430,13 @@ internal sealed class HtmlExporter
                                                     var md = f.Content;
                                                     if (string.IsNullOrWhiteSpace(md) && !string.IsNullOrWhiteSpace(f.Path) && File.Exists(f.Path))
                                                     {
-                                                        md = $"```xml\n{File.ReadAllText(f.Path)}\n```";
+                                                        md = RepositoryContentNormalizer.WrapAsSourceCodeBlock(File.ReadAllText(f.Path), "text");
                                                     }
+                                                    else
+                                                    {
+                                                        md = NormalizeSourceLikeMarkdown(md);
+                                                    }
+
                                                     p.Markdown(md ?? string.Empty, new MarkdownOptions { HeadingsBaseLevel = 2, AutolinkBareUrls = true, Sanitize = true, AllowRawHtmlInline = true, AllowRawHtmlBlocks = true });
                                                 });
                                             }
@@ -409,7 +477,14 @@ internal sealed class HtmlExporter
                                     var rel = releases.Last();
                                     tabs.AddTab("📦 Releases", panel =>
                                     {
-                                        panel.Markdown(rel.Content ?? string.Empty, new MarkdownOptions { HeadingsBaseLevel = 2, AutolinkBareUrls = true, Sanitize = true, AllowRawHtmlInline = true, AllowRawHtmlBlocks = true });
+                                        if (rel.Releases is { Count: > 0 })
+                                        {
+                                            RenderStructuredReleases(panel, rel.Releases);
+                                        }
+                                        else
+                                        {
+                                            panel.Markdown(rel.Content ?? string.Empty, new MarkdownOptions { HeadingsBaseLevel = 2, AutolinkBareUrls = true, Sanitize = true, AllowRawHtmlInline = true, AllowRawHtmlBlocks = true });
+                                        }
                                     });
                                 }
 
@@ -1014,6 +1089,380 @@ internal sealed class HtmlExporter
             var md = string.Join("\n", m.RelatedLinks.Select(l => !string.IsNullOrEmpty(l.Uri) ? $"- [{l.Title}]({l.Uri})" : $"- {l.Title}"));
             panel.Markdown(md, new MarkdownOptions { HeadingsBaseLevel = 3, AutolinkBareUrls = true, Sanitize = true, AllowRawHtmlInline = true, AllowRawHtmlBlocks = true });
         }
+    }
+
+    private static void RenderStructuredReleases(TablerTabsPanel panel, IEnumerable<RepoRelease> releases)
+    {
+        var releaseList = OrderReleases(releases);
+
+        if (releaseList.Count == 0)
+        {
+            panel.Markdown("No releases available.", new MarkdownOptions { HeadingsBaseLevel = 2, Sanitize = true });
+            return;
+        }
+
+        var latest = releaseList[0];
+        var latestStable = releaseList.FirstOrDefault(r => !IsPrerelease(r));
+        var latestPreview = releaseList.FirstOrDefault(IsPrerelease);
+        var totalAssets = releaseList.Sum(r => r.Assets.Count);
+
+        panel.Card(card =>
+        {
+            card.Header(h => h.Title("Release Overview"));
+            card.DataGrid(grid =>
+            {
+                grid.AddItem("Total releases", releaseList.Count.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                grid.AddItem("Total assets", totalAssets.ToString(System.Globalization.CultureInfo.InvariantCulture));
+
+                var latestLabel = string.IsNullOrWhiteSpace(latest.Name) ? latest.Tag : latest.Name;
+                if (!string.IsNullOrWhiteSpace(latestLabel))
+                {
+                    grid.AddItem("Latest release", latestLabel!);
+                }
+
+                if (latest.PublishedAt.HasValue)
+                {
+                    grid.AddItem("Latest published", latest.PublishedAt.Value.ToString("yyyy-MM-dd"));
+                }
+
+                if (latestStable is not null)
+                {
+                    grid.AddItem("Latest stable", ResolveReleaseLabel(latestStable));
+                }
+
+                if (latestPreview is not null)
+                {
+                    grid.AddItem("Latest preview", ResolveReleaseLabel(latestPreview));
+                }
+
+                if (!string.IsNullOrWhiteSpace(latest.Url))
+                {
+                    grid.AddItem("Latest release page", new HtmlForgeX.Tags.Anchor(latest.Url!, latest.Url!));
+                }
+            });
+        });
+
+        panel.LineBreak();
+        panel.Tabs(inner =>
+        {
+            inner.AddTab("🕒 Timeline", timeline =>
+            {
+                if (releaseList.Count > 1 || totalAssets > 0)
+                {
+                    var rows = releaseList.Select(release => new
+                    {
+                        Release = ResolveReleaseLabel(release),
+                        Tag = release.Tag ?? string.Empty,
+                        Status = ResolveReleaseStatus(release, latestStable, latestPreview),
+                        Published = release.PublishedAt?.ToString("yyyy-MM-dd") ?? string.Empty,
+                        Assets = release.Assets.Count,
+                        Url = release.Url ?? string.Empty
+                    }).ToList();
+
+                    timeline.Card(card =>
+                    {
+                        card.Header(h => h.Title("Release Index"));
+                        card.DataTable(rows, t => t
+                            .Settings(s => s.Preset(DataTablesPreset.Minimal))
+                            .Settings(s => s.Export(DataTablesExportFormat.Excel, DataTablesExportFormat.CSV, DataTablesExportFormat.Copy))
+                            .Settings(s => s.ToggleViewButton("Switch to ScrollX", ToggleViewMode.ScrollX, persist: true))
+                        );
+                    });
+                }
+
+                foreach (var release in releaseList)
+                {
+                    timeline.LineBreak();
+                    timeline.Card(card =>
+                    {
+                        card.Header(h => h.Title(ResolveReleaseLabel(release)));
+                        card.Body(body =>
+                        {
+                            body.DataGrid(grid =>
+                            {
+                                if (!string.IsNullOrWhiteSpace(release.Tag))
+                                {
+                                    grid.AddItem("Tag", release.Tag);
+                                }
+
+                                grid.AddItem("Status", ResolveReleaseStatus(release, latestStable, latestPreview));
+
+                                if (release.PublishedAt.HasValue)
+                                {
+                                    grid.AddItem("Published", release.PublishedAt.Value.ToString("yyyy-MM-dd"));
+                                }
+
+                                grid.AddItem("Assets", release.Assets.Count.ToString(System.Globalization.CultureInfo.InvariantCulture));
+
+                                if (!string.IsNullOrWhiteSpace(release.Url))
+                                {
+                                    grid.AddItem("Release page", new HtmlForgeX.Tags.Anchor(release.Url!, release.Url!));
+                                }
+                            });
+
+                            if (!string.IsNullOrWhiteSpace(release.Body))
+                            {
+                                body.Markdown("### Notes", new MarkdownOptions
+                                {
+                                    HeadingsBaseLevel = 2,
+                                    AutolinkBareUrls = true,
+                                    Sanitize = true,
+                                    AllowRawHtmlInline = true,
+                                    AllowRawHtmlBlocks = true
+                                });
+                                body.Markdown(release.Body.Trim(), new MarkdownOptions
+                                {
+                                    HeadingsBaseLevel = 3,
+                                    AutolinkBareUrls = true,
+                                    OpenLinksInNewTab = false,
+                                    Sanitize = true,
+                                    AllowRawHtmlInline = true,
+                                    AllowRawHtmlBlocks = true,
+                                    AllowRelativeLinks = true,
+                                    TableMode = MarkdownTableMode.DataTables,
+                                    DataTables = new MarkdownDataTablesOptions
+                                    {
+                                        Responsive = true,
+                                        Export = true,
+                                        ExportFormats = new[] { DataTablesExportFormat.Excel, DataTablesExportFormat.CSV, DataTablesExportFormat.Copy },
+                                        StateSave = true
+                                    }
+                                });
+                            }
+
+                            if (release.Assets.Count > 0)
+                            {
+                                body.Markdown("### Assets", new MarkdownOptions
+                                {
+                                    HeadingsBaseLevel = 2,
+                                    Sanitize = true
+                                });
+
+                                var assetRows = release.Assets.Select(asset => new
+                                {
+                                    Name = asset.Name,
+                                    Download = asset.DownloadUrl,
+                                    Size = asset.Size.HasValue ? FormatBytes(asset.Size.Value) : string.Empty,
+                                    Type = asset.ContentType ?? string.Empty
+                                }).ToList();
+
+                                body.DataTable(assetRows, t => t
+                                    .Settings(s => s.Preset(DataTablesPreset.Minimal))
+                                    .Settings(s => s.Export(DataTablesExportFormat.Excel, DataTablesExportFormat.CSV, DataTablesExportFormat.Copy))
+                                    .Settings(s => s.ToggleViewButton("Switch to ScrollX", ToggleViewMode.ScrollX, persist: true))
+                                );
+                            }
+                        });
+                    });
+                }
+            });
+
+            if (totalAssets > 0)
+            {
+                var downloadRows = releaseList
+                    .SelectMany(release => release.Assets.Select(asset => new
+                    {
+                        Release = ResolveReleaseLabel(release),
+                        Tag = release.Tag ?? string.Empty,
+                        Status = ResolveReleaseStatus(release, latestStable, latestPreview),
+                        Published = release.PublishedAt?.ToString("yyyy-MM-dd") ?? string.Empty,
+                        Name = asset.Name,
+                        Download = asset.DownloadUrl,
+                        Size = asset.Size.HasValue ? FormatBytes(asset.Size.Value) : string.Empty,
+                        Type = asset.ContentType ?? string.Empty
+                    }))
+                    .ToList();
+
+                inner.AddTab("⬇️ Downloads", downloads =>
+                {
+                    downloads.Card(card =>
+                    {
+                        card.Header(h => h.Title("Release Downloads"));
+                        card.DataTable(downloadRows, t => t
+                            .Settings(s => s.Preset(DataTablesPreset.Minimal))
+                            .Settings(s => s.Export(DataTablesExportFormat.Excel, DataTablesExportFormat.CSV, DataTablesExportFormat.Copy))
+                            .Settings(s => s.ToggleViewButton("Switch to ScrollX", ToggleViewMode.ScrollX, persist: true))
+                        );
+                    });
+                });
+            }
+        });
+    }
+
+    private static string ResolveReleaseLabel(RepoRelease release)
+    {
+        if (!string.IsNullOrWhiteSpace(release.Name))
+            return release.Name;
+        if (!string.IsNullOrWhiteSpace(release.Tag))
+            return release.Tag;
+        return "Release";
+    }
+
+    private static List<RepoRelease> OrderReleases(IEnumerable<RepoRelease> releases)
+    {
+        var releaseList = releases
+            .Where(r => r is not null && !r.IsDraft)
+            .ToList();
+
+        releaseList.Sort(CompareReleasesDescending);
+        return releaseList;
+    }
+
+    private static int CompareReleasesDescending(RepoRelease? left, RepoRelease? right)
+    {
+        if (ReferenceEquals(left, right))
+            return 0;
+        if (left is null)
+            return 1;
+        if (right is null)
+            return -1;
+
+        var publishedComparison = Nullable.Compare(right.PublishedAt, left.PublishedAt);
+        if (publishedComparison != 0)
+            return publishedComparison;
+
+        var versionComparison = CompareReleaseVersions(left, right);
+        if (versionComparison != 0)
+            return -versionComparison;
+
+        return string.Compare(ResolveReleaseLabel(right), ResolveReleaseLabel(left), StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static int CompareReleaseVersions(RepoRelease left, RepoRelease right)
+    {
+        var leftVersion = TryParseReleaseVersion(left, out var parsedLeft, out var leftSuffix, out var leftIsPrerelease);
+        var rightVersion = TryParseReleaseVersion(right, out var parsedRight, out var rightSuffix, out var rightIsPrerelease);
+
+        if (leftVersion && rightVersion)
+        {
+            var versionComparison = parsedLeft.CompareTo(parsedRight);
+            if (versionComparison != 0)
+                return versionComparison;
+
+            if (leftIsPrerelease != rightIsPrerelease)
+                return leftIsPrerelease ? -1 : 1;
+
+            return string.Compare(leftSuffix, rightSuffix, StringComparison.OrdinalIgnoreCase);
+        }
+
+        if (leftVersion)
+            return 1;
+        if (rightVersion)
+            return -1;
+
+        return string.Compare(ResolveReleaseLabel(left), ResolveReleaseLabel(right), StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool TryParseReleaseVersion(RepoRelease release, out Version version, out string suffix, out bool isPrerelease)
+    {
+        var token = string.Join(" ", new[] { release.Tag ?? string.Empty, release.Name ?? string.Empty });
+        var match = System.Text.RegularExpressions.Regex.Match(
+            token,
+            @"\bv?(?<version>\d+(?:\.\d+){1,3})(?<suffix>[-a-z][a-z0-9\.-]*)?\b",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+
+        if (!match.Success || !Version.TryParse(match.Groups["version"].Value, out version!))
+        {
+            version = new Version(0, 0);
+            suffix = string.Empty;
+            isPrerelease = false;
+            return false;
+        }
+
+        suffix = match.Groups["suffix"].Success ? match.Groups["suffix"].Value : string.Empty;
+        isPrerelease = !string.IsNullOrWhiteSpace(suffix);
+        return true;
+    }
+
+    private static string ResolveReleaseStatus(RepoRelease release, RepoRelease? latestStable, RepoRelease? latestPreview)
+    {
+        if (latestStable is not null && ReferenceEquals(release, latestStable))
+            return "Latest Stable";
+        if (latestPreview is not null && ReferenceEquals(release, latestPreview))
+            return "Latest Preview";
+        return IsPrerelease(release) ? "Preview" : "Stable";
+    }
+
+    private static bool IsPrerelease(RepoRelease release)
+    {
+        if (release.IsPrerelease)
+            return true;
+
+        var combined = string.Join(" ", new[] { release.Tag ?? string.Empty, release.Name ?? string.Empty });
+        return combined.Contains("preview", StringComparison.OrdinalIgnoreCase)
+               || combined.Contains("prerelease", StringComparison.OrdinalIgnoreCase)
+               || combined.Contains("pre-release", StringComparison.OrdinalIgnoreCase)
+               || combined.Contains("alpha", StringComparison.OrdinalIgnoreCase)
+               || combined.Contains("beta", StringComparison.OrdinalIgnoreCase)
+               || System.Text.RegularExpressions.Regex.IsMatch(combined, @"(?<![a-z])rc[\.-]?\d*", System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+    }
+
+    private static string NormalizeSourceLikeMarkdown(string? markdown)
+    {
+        if (string.IsNullOrWhiteSpace(markdown))
+            return string.Empty;
+
+        var trimmed = markdown!.Trim();
+        if ((trimmed.StartsWith("```", StringComparison.Ordinal) || trimmed.StartsWith("~~~", StringComparison.Ordinal))
+            && TryExtractSingleFencedBlock(trimmed, out var codeContent))
+        {
+            return RepositoryContentNormalizer.WrapAsSourceCodeBlock(codeContent, "text");
+        }
+
+        return RepositoryContentNormalizer.WrapAsSourceCodeBlock(trimmed, "text");
+    }
+
+    private static bool TryExtractSingleFencedBlock(string markdown, out string codeContent)
+    {
+        codeContent = string.Empty;
+        if (string.IsNullOrWhiteSpace(markdown))
+            return false;
+
+        var normalized = markdown.Replace("\r\n", "\n");
+        var lines = normalized.Split('\n');
+        if (lines.Length < 3)
+            return false;
+
+        var firstLine = lines[0].Trim();
+        if (!(firstLine.StartsWith("```", StringComparison.Ordinal) || firstLine.StartsWith("~~~", StringComparison.Ordinal)))
+            return false;
+
+        var markerChar = firstLine[0];
+        var markerLength = 0;
+        while (markerLength < firstLine.Length && firstLine[markerLength] == markerChar)
+        {
+            markerLength++;
+        }
+
+        var closingIndex = lines.Length - 1;
+        while (closingIndex > 0 && string.IsNullOrWhiteSpace(lines[closingIndex]))
+        {
+            closingIndex--;
+        }
+
+        var closingLine = lines[closingIndex].Trim();
+        if (closingLine.Length < markerLength || !closingLine.All(ch => ch == markerChar))
+            return false;
+
+        codeContent = string.Join("\n", lines.Skip(1).Take(closingIndex - 1));
+        return true;
+    }
+
+    private static string FormatBytes(long size)
+    {
+        if (size < 1024)
+            return size.ToString(System.Globalization.CultureInfo.InvariantCulture) + " B";
+
+        double value = size;
+        var suffixes = new[] { "KB", "MB", "GB", "TB" };
+        var suffixIndex = -1;
+        while (value >= 1024 && suffixIndex < suffixes.Length - 1)
+        {
+            value /= 1024;
+            suffixIndex++;
+        }
+
+        return value.ToString(value >= 10 ? "0.#" : "0.##", System.Globalization.CultureInfo.InvariantCulture) + " " + suffixes[Math.Max(suffixIndex, 0)];
     }
 
     private static string NormalizeExampleTitle(string raw, int index)
